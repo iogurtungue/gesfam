@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
+import { bankLabel } from '../lib/bankLabel';
 import { centsToEs } from '../lib/numbers';
 import { applyColumnMapping, type ColumnMapping } from '../parsers/columnMapping';
 import { importFile } from '../parsers/importFile';
-import type { BankId, ParseResult, RawTable } from '../parsers/types';
+import type { ParseResult, RawTable } from '../parsers/types';
 import type { Compte } from '../db/types';
 import { commitImport, createCompte, findMatchingCompte } from '../db/operations';
 import { ManualMapping } from './ManualMapping';
@@ -218,8 +219,8 @@ function ParsedResultCard({
           <tr>
             <th style={cellStyle}>Data</th>
             <th style={cellStyle}>Concepte</th>
-            <th style={cellStyle}>Import</th>
-            <th style={cellStyle}>Saldo</th>
+            <th style={{ ...cellStyle, textAlign: 'right' }}>Import</th>
+            <th style={{ ...cellStyle, textAlign: 'right' }}>Saldo</th>
           </tr>
         </thead>
         <tbody>
@@ -227,8 +228,10 @@ function ParsedResultCard({
             <tr key={i}>
               <td style={cellStyle}>{m.dataOperacio}</td>
               <td style={cellStyle}>{m.concepteOriginal}</td>
-              <td style={cellStyle}>{centsToEs(m.importCents)}</td>
-              <td style={cellStyle}>{m.saldoPosteriorCents !== null ? centsToEs(m.saldoPosteriorCents) : '—'}</td>
+              <td style={{ ...cellStyle, textAlign: 'right' }}>{centsToEs(m.importCents, false)}</td>
+              <td style={{ ...cellStyle, textAlign: 'right' }}>
+                {m.saldoPosteriorCents !== null ? centsToEs(m.saldoPosteriorCents, false) : '—'}
+              </td>
             </tr>
           ))}
         </tbody>
@@ -243,18 +246,3 @@ function ParsedResultCard({
 }
 
 const cellStyle: React.CSSProperties = { border: '1px solid #ccc', padding: '2px 6px' };
-
-function bankLabel(banc: BankId): string {
-  switch (banc) {
-    case 'sabadell':
-      return 'Banc Sabadell';
-    case 'bbva':
-      return 'BBVA';
-    case 'ing':
-      return 'ING';
-    case 'openbank':
-      return 'OpenBank';
-    default:
-      return 'Altre';
-  }
-}

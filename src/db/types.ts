@@ -23,9 +23,17 @@ export interface Moviment {
   concepteNormalitzat: string;
   importCents: number;
   saldoPosteriorCents: number | null;
-  categoria?: string;
+  /** Referència a Categoria.id */
+  categoriaId?: string;
   lotImportacioId: string;
   esTransferenciaInterna?: boolean;
+  /**
+   * Ordre d'inserció global i monòtonament creixent. dataOperacio per si sola
+   * no desempata moviments del mateix dia — cal aquest camp per respectar
+   * l'ordre en què apareixien al fitxer importat en qualsevol vista ordenada
+   * per data (IndexedDB no garanteix retornar les files en ordre d'inserció).
+   */
+  seq: number;
 }
 
 export interface LotImportacio {
@@ -35,4 +43,18 @@ export interface LotImportacio {
   banc: BankId;
   compteId: string;
   nombreMoviments: number;
+}
+
+export interface Categoria {
+  id: string;
+  nom: string;
+}
+
+export interface ReglaCategoritzacio {
+  id: string;
+  /** Subcadena a buscar dins el concepte normalitzat (comparació insensible a majúscules). */
+  patro: string;
+  categoriaId: string;
+  /** Ordre d'aplicació: la primera regla que coincideix (per prioritat ascendent) guanya. */
+  prioritat: number;
 }

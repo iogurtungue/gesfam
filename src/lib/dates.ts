@@ -34,6 +34,25 @@ export function parseFlexibleDate(raw: string | Date): string {
   throw new Error(`Format de data no reconegut: "${raw}"`);
 }
 
+/**
+ * Today's date in the user's local timezone, as an ISO yyyy-mm-dd string.
+ * Deliberately NOT `new Date().toISOString().slice(0, 10)`: toISOString is
+ * always UTC, and Spain's timezone is ahead of UTC (CET/CEST) — during the
+ * early-morning hours that expression silently returns *yesterday's* date,
+ * which excluded today's just-imported movements from balance calculations
+ * that use "up to today" as their cutoff.
+ */
+export function avui(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/** Displays an ISO yyyy-mm-dd date in Spanish convention dd/mm/aaaa (spec section 2). */
+export function formatDateEs(iso: string): string {
+  const [y, m, d] = iso.split('-');
+  return `${d}/${m}/${y}`;
+}
+
 /** Norma 43 dates are AAMMDD with a 2-digit year; these are always recent bank statements. */
 export function parseNorma43Date(aammdd: string): string {
   if (!/^\d{6}$/.test(aammdd)) {

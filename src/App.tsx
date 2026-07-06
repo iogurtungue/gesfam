@@ -1,45 +1,99 @@
 import { useCallback, useEffect, useState } from 'react';
-import { listComptes, listLots } from './db/operations';
-import type { Compte, LotImportacio } from './db/types';
+import { listCategories, listComptes, listLots, listRegles } from './db/operations';
+import type { Categoria, Compte, LotImportacio, ReglaCategoritzacio } from './db/types';
+import { CompteSelector } from './components/CompteSelector';
+import { useCompteSeleccio } from './hooks/useCompteSeleccio';
 import { ImportWizard } from './import/ImportWizard';
 import { LotsList } from './import/LotsList';
+import { AccountsManager } from './views/AccountsManager';
+import { Backup } from './views/Backup';
+import { BalanceAtDate } from './views/BalanceAtDate';
+import { CategoriesManager } from './views/CategoriesManager';
+import { Dashboard } from './views/Dashboard';
+import { Maintenance } from './views/Maintenance';
+import { MovimentsList } from './views/MovimentsList';
+import { Summary } from './views/Summary';
+
+type Pestanya = 'panell' | 'saldos' | 'moviments' | 'resum' | 'categories' | 'comptes' | 'importar' | 'backup' | 'manteniment';
+
+const PESTANYES: { id: Pestanya; label: string; ambSelector: boolean }[] = [
+  { id: 'panell', label: 'Panell general', ambSelector: true },
+  { id: 'saldos', label: 'Saldos a una data', ambSelector: true },
+  { id: 'moviments', label: 'Moviments', ambSelector: true },
+  { id: 'resum', label: 'Resums', ambSelector: true },
+  { id: 'categories', label: 'Categories i regles', ambSelector: false },
+  { id: 'comptes', label: 'Comptes', ambSelector: false },
+  { id: 'importar', label: 'Importar', ambSelector: false },
+  { id: 'backup', label: 'Còpia de seguretat', ambSelector: false },
+  { id: 'manteniment', label: 'Manteniment', ambSelector: false },
+];
 
 function App() {
   const [comptes, setComptes] = useState<Compte[]>([]);
   const [lots, setLots] = useState<LotImportacio[]>([]);
+  const [categories, setCategories] = useState<Categoria[]>([]);
+  const [regles, setRegles] = useState<ReglaCategoritzacio[]>([]);
+  const [pestanya, setPestanya] = useState<Pestanya>('panell');
+
+  const seleccio = useCompteSeleccio(comptes);
 
   const refresh = useCallback(() => {
     listComptes().then(setComptes);
     listLots().then(setLots);
+    listCategories().then(setCategories);
+    listRegles().then(setRegles);
   }, []);
 
   useEffect(() => {
     refresh();
   }, [refresh]);
 
+  const pestanyaActiva = PESTANYES.find((p) => p.id === pestanya)!;
+
+  // La taula de Moviments té una columna Import/Saldo per compte, així que
+  // necessita tot l'ample de pantalla disponible en lloc del contenidor
+  // centrat i limitat a 1000px que fan servir la resta de pestanyes.
+  const amplariMaxima = pestanya === 'moviments' ? 'none' : 1000;
+
   return (
-    <div style={{ maxWidth: 900, margin: '0 auto', padding: 16, fontFamily: 'sans-serif' }}>
+    <div style={{ maxWidth: amplariMaxima, margin: '0 auto', padding: 16, fontFamily: 'sans-serif' }}>
       <h1>GesFam — Centralitzador d'extractes bancaris</h1>
 
-      <section>
-        <h2>Comptes</h2>
-        {comptes.length === 0 ? (
-          <p>Encara no hi ha cap compte. Importa un extracte per crear-ne un.</p>
-        ) : (
-          <ul>
-            {comptes.map((c) => (
-              <li key={c.id}>
-                {c.alias} — {c.banc} ({c.tipus === 'targeta' ? 'targeta' : 'compte corrent'})
-                {c.ibanOUltimsDigits && ` — núm. ${c.ibanOUltimsDigits}`}
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
+      <nav style={{ display: 'flex', gap: 4, flexWrap: 'wrap', marginBottom: 12, borderBottom: '1px solid #ccc' }}>
+        {PESTANYES.map((p) => (
+          <button
+            key={p.id}
+            onClick={() => setPestanya(p.id)}
+            style={{
+              padding: '6px 12px',
+              border: 'none',
+              borderBottom: pestanya === p.id ? '2px solid #2a6' : '2px solid transparent',
+              background: 'none',
+              fontWeight: pestanya === p.id ? 'bold' : 'normal',
+              cursor: 'pointer',
+            }}
+          >
+            {p.label}
+          </button>
+        ))}
+      </nav>
 
-      <ImportWizard comptes={comptes} onChanged={refresh} />
+      {pestanyaActiva.ambSelector && <CompteSelector comptes={comptes} seleccio={seleccio} />}
 
-      <LotsList lots={lots} comptes={comptes} onChanged={refresh} />
+      {pestanya === 'panell' && <Dashboard seleccionats={seleccio.seleccionats} />}
+      {pestanya === 'saldos' && <BalanceAtDate seleccionats={seleccio.seleccionats} />}
+      {pestanya === 'moviments' && <MovimentsList seleccionats={seleccio.seleccionats} categories={categories} />}
+      {pestanya === 'resum' && <Summary seleccionats={seleccio.seleccionats} categories={categories} />}
+      {pestanya === 'categories' && <CategoriesManager categories={categories} regles={regles} onChanged={refresh} />}
+      {pestanya === 'comptes' && <AccountsManager comptes={comptes} onChanged={refresh} />}
+      {pestanya === 'importar' && (
+        <>
+          <ImportWizard comptes={comptes} onChanged={refresh} />
+          <LotsList lots={lots} comptes={comptes} onChanged={refresh} />
+        </>
+      )}
+      {pestanya === 'backup' && <Backup onImported={refresh} />}
+      {pestanya === 'manteniment' && <Maintenance onReset={refresh} />}
     </div>
   );
 }

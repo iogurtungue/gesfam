@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseAmountToCents } from './numbers';
+import { centsToEs, parseAmountToCents } from './numbers';
 
 describe('parseAmountToCents', () => {
   it('parses a native number by scaling to cents', () => {
@@ -41,5 +41,21 @@ describe('parseAmountToCents', () => {
   it('throws on an unparsable amount', () => {
     expect(() => parseAmountToCents('n/a')).toThrow();
     expect(() => parseAmountToCents('')).toThrow();
+  });
+});
+
+describe('centsToEs', () => {
+  it('formats with the € symbol and thousands separator by default', () => {
+    expect(centsToEs(123456)).toBe('1.234,56 €');
+    expect(centsToEs(-123456)).toBe('-1.234,56 €');
+  });
+
+  it('groups multiple thousands', () => {
+    expect(centsToEs(123456789)).toBe('1.234.567,89 €');
+  });
+
+  it('omits the € symbol when ambSimbol is false, keeping the thousands separator', () => {
+    expect(centsToEs(123456, false)).toBe('1.234,56');
+    expect(centsToEs(-123456, false)).toBe('-1.234,56');
   });
 });
