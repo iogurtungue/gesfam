@@ -11,16 +11,18 @@ L'usuari treballa amb tres bancs espanyols: **Banc Sabadell**, **ING (España)**
 
 **[DECIDIT]** Entrada de dades: importació manual de fitxers. No hi ha integració amb API bancàries ni agregadors PSD2. No descartar-ho en el futur: l'arquitectura ha de deixar la porta oberta (capa d'ingesta desacoblada).
 
-**[DECIDIT]** Format: aplicació web local que corre al navegador de l'usuari. Ús mono-usuari, sense autenticació, sense backend remot.
+**[DECIDIT]** Format: aplicació web local amb dues peces que corren juntes a la màquina de l'usuari: un **backend lleuger Node** (Express o Fastify) amb base de dades **SQLite** en fitxer, i un **frontend React** servit pel mateix servidor i consultat des del navegador. Ús mono-usuari, sense autenticació, sense cap servei remot.
 
 **[DECIDIT]** Privacitat: cap dada bancària surt de la màquina de l'usuari. Tot el processament i emmagatzematge és local.
 
 ## 2. Requisits no funcionals
 
-- **Persistència local**: les dades importades han de sobreviure al tancament del navegador. Utilitzar IndexedDB (via Dexie.js o similar). Preveure funció d'**exportar/importar còpia de seguretat** completa en un fitxer JSON, perquè l'usuari no perdi res si canvia de navegador o neteja dades.
+- **Persistència local en SQLite**: totes les dades viuen en un únic fitxer SQLite (p. ex. `dades/finances.db`) al directori del projecte, fora del navegador. El navegador és només interfície: no s'hi guarda cap dada (ni IndexedDB ni localStorage), de manera que netejar el navegador o canviar-ne no comporta cap pèrdua.
+- **Còpies de seguretat**: còpia automàtica del fitxer `.db` (amb marca de temps, retenint les N últimes) abans de cada importació i de qualsevol operació destructiva; a més, funció manual d'exportar/importar tota la base en JSON per a migracions. Documentar al README que el directori `dades/` es pot situar dins d'una carpeta sincronitzada (Drive, Dropbox…) per tenir còpia externa.
 - **Idioma de la interfície**: català. Formats numèrics i de data en convenció espanyola (1.234,56 € / dd/mm/aaaa).
-- **Simplicitat operativa**: l'usuari ha de poder arrencar l'app amb una sola ordre (`npm run dev`) o, millor encara, obrir un build estàtic (`npm run build` → carpeta `dist` servible o fins i tot obrible en local). Cap dependència de serveis externs en temps d'execució.
-- **Stack proposat**: Vite + React + TypeScript, Dexie (IndexedDB), PapaParse (CSV), SheetJS/xlsx (Excel), Recharts (gràfics). Claude Code pot proposar alternatives equivalents si ho justifica, però mantenint el principi 100% local.
+- **Simplicitat operativa**: l'usuari arrenca tot el sistema amb una sola ordre (`npm start`), que aixeca el servidor local (p. ex. `http://localhost:3000`) i serveix el frontend ja compilat; el navegador s'obre automàticament si és possible. El servidor escolta només a `localhost`. Cap dependència de serveis externs en temps d'execució.
+- **Stack proposat**: backend Node + TypeScript amb Express o Fastify i **better-sqlite3** (o Drizzle ORM sobre SQLite); frontend Vite + React + TypeScript; PapaParse (CSV) i SheetJS/xlsx (Excel) al backend, on es fa tot el parseig i la deduplicació; Recharts (gràfics). API REST interna senzilla entre frontend i backend. Claude Code pot proposar alternatives equivalents si ho justifica, però mantenint el principi 100% local i la base de dades en un fitxer SQLite.
+- **Migració futura**: aquesta arquitectura ha de permetre empaquetar més endavant l'app com a aplicació d'escriptori (Tauri/Electron) reaprofitant frontend i base de dades; no implementar-ho ara, però no prendre decisions que ho impedeixin.
 
 ## 3. Funcionalitat 1 — Importació i centralització d'extractes
 
@@ -101,8 +103,8 @@ Multiusuari i autenticació; connexió automàtica amb bancs; app mòbil nativa;
 
 ## 6. Pla de fases proposat per a Claude Code
 
-1. **Fase 1 — Esquelet i ingesta**: projecte Vite+React+TS, base de dades Dexie amb el model de dades, importador amb detecció de banc + mapatge manual, deduplicació, previsualització i resum d'importació, desfer lot. *Criteri d'acceptació*: importar dos extractes solapats de cada banc real sense duplicats ni files perdudes.
-2. **Fase 2 — Consulta**: panell general, llistat filtrable, resum mensual, regles de categorització, transferències internes, còpia de seguretat JSON. *Criteri*: retrobar qualsevol moviment en <10 segons amb els filtres.
+1. **Fase 1 — Esquelet i ingesta**: monorepo amb backend Node+TS (Express/Fastify, better-sqlite3, esquema SQLite amb migracions) i frontend Vite+React+TS; arrencada unificada amb `npm start`; importador amb detecció de banc + mapatge manual (parseig al backend), deduplicació, previsualització i resum d'importació, desfer lot, còpia automàtica del `.db` abans d'importar. *Criteri d'acceptació*: importar dos extractes solapats de cada banc real sense duplicats ni files perdudes, i verificar que les dades persisteixen després de reiniciar servidor i navegador.
+2. **Fase 2 — Consulta**: panell general, selector multi-compte, vista de saldos a una data, llistat filtrable, resum mensual, regles de categorització, transferències internes, exportació/importació JSON. *Criteri*: retrobar qualsevol moviment en <10 segons amb els filtres.
 3. **Fase 3 — Recurrents**: detecció, pantalla de revisió/confirmació, recurrents manuals. *Criteri*: detectar correctament nòmina, hipoteca/lloguer i 3+ subministraments de l'històric real de l'usuari.
 4. **Fase 4 — Previsió**: motor de projecció, gràfic, taula, alertes de llindar. *Criteri*: la previsió a 30 dies quadra amb el que l'usuari espera manualment (±revisió conjunta).
 5. **Fase 5 (opcional)**: parser Norma 43, simulacions, despesa difusa, exportacions addicionals.
@@ -115,3 +117,4 @@ Desenvolupar **fase per fase**, validant amb l'usuari abans de passar a la segü
 - Un fitxer d'extracte de **cada targeta de crèdit** que vulgui incloure, més el dia de liquidació mensual de cada targeta.
 - Confirmació dels punts **[OBERT]**.
 - Llindar d'alerta de saldo mínim desitjat.
+- Requisit previ a la màquina: tenir **Node.js** (versió LTS) instal·lat.

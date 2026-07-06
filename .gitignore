@@ -15,6 +15,9 @@ dist-ssr
 # Real bank export samples (personal financial data, never commit)
 /Samples/
 
+# SQLite database file and its automatic backups (personal financial data, never commit)
+/dades/
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

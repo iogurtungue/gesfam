@@ -6,12 +6,13 @@ Aquest fitxer es manté actualitzat segons les instruccions de `CLAUDE.md`. Cont
 
 ### Què és el projecte
 
-Aplicació web local (Vite + React + TypeScript) per centralitzar moviments bancaris de Banc Sabadell, BBVA, ING i OpenBank, importats manualment des de fitxers d'extracte, amb persistència 100% local (IndexedDB via Dexie). Especificació completa a `especificacio.md`. Sense backend, sense autenticació, sense sortida de dades de la màquina de l'usuari.
+Aplicació web local per centralitzar moviments bancaris de Banc Sabadell, BBVA, ING i OpenBank, importats manualment des de fitxers d'extracte. Frontend Vite + React + TypeScript (només UI i lectura via API); backend Node + TypeScript + Express amb persistència en un fitxer SQLite (`dades/finances.db`), tota en local. Especificació completa a `especificacio.md`. Sense autenticació, sense sortida de dades de la màquina de l'usuari — el backend només escolta a `localhost`.
 
 ### Fases completades
 
 **Fase 1 — Esquelet i ingesta**: parsers per banc, deduplicació, previsualització/resum d'importació, desfer lot.
 **Fase 2 — Consulta**: selector global de comptes, panell general, saldos a una data, llistat filtrable, resum mensual, categories i regles, transferències internes, còpia de seguretat JSON, i menú de manteniment (eliminar només els moviments, o reinicialitzar la base de dades sencera).
+**Migració d'arquitectura (post Fase 2, abans de la Fase 3)**: pas de tot (parsers, dedup, persistència) del navegador (Dexie/IndexedDB) a un backend Node/Express amb SQLite. Vegeu l'entrada d'historial corresponent i la secció Arquitectura més avall. **Pendent de validació de l'usuari abans d'iniciar la Fase 3** (vegeu "Pendent / coses obertes").
 
 ### Abast de bancs (ampliat respecte a l'especificació original)
 
@@ -30,58 +31,69 @@ Norma 43 no estava previst per a la Fase 1 (l'especificació el marcava com a "d
 
 ### Arquitectura
 
+Monorepo amb npm workspaces (`backend/`, `frontend/`). El backend és l'única font de veritat: parseig, deduplicació, categorització i persistència hi viuen sencers; el frontend és una capa d'UI que parla amb `/api/*` per fetch i no escriu cap dada de negoci enlloc (ni IndexedDB ni localStorage — localStorage només guarda preferències d'interfície, com la selecció de comptes activa).
+
 ```
-src/
-  lib/            Utilitats pures i testejades (sense dependència de Dexie/React)
-    numbers.ts       parseAmountToCents (tolerant a coma/punt decimal), centsToEs (format espanyol)
-    dates.ts         parseFlexibleDate, parseNorma43Date, formatDateEs (dd/mm/aaaa)
-    concept.ts       normalizeConceptForDedup
-    hash.ts          computeMovimentHash (cyrb53) — id determinista del moviment (spec 3.3)
-    encoding.ts      decodeBuffer (UTF-8 amb fallback a Windows-1252)
-    categorization.ts   pickCategoriaId (motor de regles "si conté X → categoria Y")
-    internalTransfers.ts  suggereixTransferenciesInternes (heurística d'aparellament)
-    balance.ts       saldoEnData (reconstrucció de saldo a una data)
-    summary.ts       resumPerMesICategoria, resumPerAnyICategoria, resumInterval
-
-  parsers/        Lectura i interpretació de fitxers bancaris (independent de Dexie)
-    types.ts         RawTable/RawCell, ParsedMoviment, ParsedAccountInfo, ParseResult
-    fileKind.ts      Detecta el format real del fitxer per bytes (norma43/excel/html/unknown)
-    excelTable.ts    Lector Excel (SheetJS) → RawTable, amb cellDates:true
-    htmlTable.ts     Lector de taules HTML mal formades (OpenBank) → RawTable, sense DOM parser
-    tableUtils.ts    locateColumns (capçalera tolerant, no per posició), extractMovimentsFromTable,
-                     findLabeledValue (extreu número de compte/targeta de les metadades del fitxer)
-    norma43.ts       Parser Norma 43 (registres 11/22/23/24/33/88)
-    banks/           Parsers específics per format de taula (ing.ts, bbva.ts, openbank.ts)
-    detectBank.ts    Combina els detectors de capçalera dels bancs de taula
-    columnMapping.ts Mapatge manual de columnes (fallback quan falla la detecció automàtica)
-    importFile.ts    Orquestrador: File → detecta format → parseja → ParseResult[]
-
-  dedup/index.ts   splitNousIDuplicats (deduplicació per hash determinista, spec 3.3)
-
+backend/src/
   db/
-    types.ts         Compte, Moviment (inclou `seq`, ordre d'inserció per desempatar
-                     moviments del mateix dia), LotImportacio, Categoria, ReglaCategoritzacio
-    schema.ts        Dexie (versió 3). Seeding de categories via l'esdeveniment 'populate'
-                     (NO via .upgrade(), que no s'executa en una BD nova — vegeu historial)
-    operations.ts    Totes les operacions CRUD + lògica de negoci sobre Dexie:
-                     importació/dedup/undo, categories/regles, transferències internes,
-                     saldo a una data, còpia de seguretat, reinicialització
+    migrations/001_init.sql   Esquema SQL (comptes, categories, regles, lots, moviments + índexs)
+    client.ts        getDb() — obre/crea dades/finances.db (node:sqlite DatabaseSync), aplica
+                      migracions pendents (versionades per nom de fitxer, taula _migrations),
+                      WAL mode. DB_PATH/DADES_DIR overridables per GESFAM_DB_PATH/GESFAM_DADES_DIR
+                      (tests fan servir ':memory:')
+    backupFile.ts     backupDbFile() — checkpoint WAL + còpia timestampada a dades/backups/,
+                      reté només les N més recents. Cridada abans de commitImport, eliminaCompte,
+                      importaCopiaSeguretat, reinicialitzaBaseDades, eliminaTotsElsMoviments
+    types.ts          Compte, Moviment (amb `seq`), LotImportacio, Categoria, ReglaCategoritzacio
+                      (interfícies camelCase; mapeig manual a/des de columnes snake_case)
+    operations.ts     Tota la lògica de negoci sobre SQLite: importació/dedup/undo,
+                      categories/regles, transferències internes, còpia de seguretat,
+                      reinicialització — equivalent 1:1 al `db/operations.ts` de Dexie de l'antiga
+                      arquitectura, ara amb SQL preparat en lloc de crides a Dexie
 
-  hooks/useCompteSeleccio.ts   Selecció global de comptes, persistida a localStorage
+  lib/              Utilitats pures i testejades (numbers, dates, concept, hash, encoding,
+                     categorization, internalTransfers) — subconjunt "de backend" (parseig/dedup)
+                     de les utilitats originals
 
-  components/CompteSelector.tsx   Selector de comptes compartit per totes les vistes
+  parsers/, dedup/  Mateixos mòduls que abans (independents de qualsevol capa de persistència),
+                    ara executant-se al backend. `importFile.ts` pren `{name, buffer: ArrayBuffer}`
+                    en lloc d'un `File` del navegador; `readRawTable()` exportat a part perquè
+                    la ruta de mapatge manual el pugui reutilitzar sense duplicar-lo
 
-  views/           Una vista per pestanya de l'app
-    Dashboard.tsx, BalanceAtDate.tsx, MovimentsList.tsx, Summary.tsx,
-    CategoriesManager.tsx, AccountsManager.tsx, Backup.tsx, Maintenance.tsx
+  routes.ts         Totes les rutes REST (Router d'Express), muntades a /api per server.ts
+  server.ts         Punt d'entrada: obre la BD, serveix /api, serveix frontend/dist ja compilat
+                    (catch-all cap a index.html per a l'SPA), obre el navegador (llevat que
+                    GESFAM_NO_OPEN estigui definit — el `dev` script el defineix per evitar
+                    obrir una pestanya nova cada reinici de tsx watch)
+  migrateFromJson.ts  Script d'un sol ús: llegeix una còpia de seguretat JSON exportada per
+                      l'antic frontend i la carrega a SQLite via importaCopiaSeguretat()
 
-  import/          Flux d'importació (independent de la navegació per pestanyes)
-    ImportWizard.tsx, ManualMapping.tsx, LotsList.tsx
+frontend/src/
+  api/
+    types.ts        Formes de tipus pures que reflecteixen el domini del backend — sense lògica
+    client.ts        Totes les crides fetch a /api/*, amb els mateixos noms de funció que
+                     l'antic db/operations.ts (per minimitzar canvis a les vistes)
 
-  App.tsx          Navegació per pestanyes + estat global (comptes/lots/categories/regles)
+  lib/              Subconjunt "de visualització" de les utilitats originals: numbers.ts
+                    (només centsToEs), dates.ts (només avui/formatDateEs), balance.ts
+                    (saldoEnData — el frontend encara reconstrueix el saldo a partir dels
+                    moviments que rep, no cal exposar-ho com a endpoint), summary.ts, bankLabel.ts
+
+  hooks/useCompteSeleccio.ts   Selecció global de comptes, persistida a localStorage (preferència
+                                d'interfície, no dada de negoci — es manté igual que abans)
+  components/CompteSelector.tsx
+  views/            Dashboard.tsx, BalanceAtDate.tsx, MovimentsList.tsx, Summary.tsx,
+                    CategoriesManager.tsx, AccountsManager.tsx, Backup.tsx, Maintenance.tsx
+  import/           ImportWizard.tsx (puja fitxers via FormData a /api/importacio/*),
+                    ManualMapping.tsx, LotsList.tsx
+  App.tsx           Navegació per pestanyes + estat global (comptes/lots/categories/regles)
 ```
 
-**Principi de disseny clau**: els parsers (`src/parsers/`) mai depenen de Dexie ni de React — reben bytes/RawTable i retornen `ParseResult` pla. Tota la lògica de negoci amb efectes (BD, categorització automàtica, dedup) viu a `src/db/operations.ts`. Això permet testejar els parsers amb fixtures sintètiques sense IndexedDB, i testejar `operations.ts` amb `fake-indexeddb` quan cal.
+**Principi de disseny clau**: el frontend no conté cap lògica de parseig, deduplicació ni persistència — només `fetch` cap al backend i reconstrucció de vistes (saldo/resum) a partir de les dades ja rebudes. No hi ha un paquet compartit entre `backend/` i `frontend/`: cada banda té la seva pròpia còpia trimmed dels fitxers purs que necessita (p. ex. `lib/dates.ts` existeix a totes dues bandes amb funcions diferents), triat deliberadament per no afegir complexitat de tooling de monorepo a canvi de duplicació petita i de baix risc de divergència.
+
+**`node:sqlite` (`DatabaseSync`) en lloc de `better-sqlite3`**: mòdul natiu de Node (des de la v22+), sense compilació nativa, API síncrona equivalent. Evita problemes de build natiu a Windows sense sacrificar cap capacitat necessària (transaccions, `.exec()` multi-sentència, PRAGMA).
+
+**Migracions SQL fetes a mà** (`db/migrations/*.sql` + runner a `client.ts`) en lloc d'un ORM — justificat per l'especificació ("Claude Code pot proposar alternatives equivalents si ho justifica") i per simplicitat operativa.
 
 ### Decisions preses (no reobrir sense motiu)
 
@@ -91,30 +103,63 @@ src/
 - **Transferències internes**: mai es marquen automàticament. Hi ha un detector heurístic (`suggereixTransferenciesInternes`) que proposa parelles (mateix import, signe oposat, comptes diferents, ±2 dies) però requereix confirmació explícita de l'usuari — validat amb dades reals que produeix tant positius certs com falsos positius plausibles.
 - **Categories/regles**: aplicades automàticament en importar (moviments nous), mai sobreescriuen una categoria ja assignada manualment. Hi ha un botó per reaplicar regles només als moviments sense categoria.
 - **Número de compte per deduplicar entre sessions**: els bancs de taula (ING/BBVA-targeta/OpenBank) no posen el número de compte a la capçalera de moviments — es va afegir `findLabeledValue` per extreure'l de les metadades del fitxer (p. ex. "Número de cuenta:"), imprescindible perquè l'app reconegui "aquest fitxer ja és d'aquest compte" entre importacions separades.
-- **xlsx via CDN de SheetJS, no npm**: la versió publicada a npm té vulnerabilitats conegudes sense pedaç (prototip pollution, ReDoS) perquè SheetJS distribueix les versions corregides des del seu propi CDN. `package.json` apunta a `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`.
-- **`Samples/` mai es commiteja**: conté fitxers reals d'extractes bancaris de l'usuari (dades personals/financeres). Exclòs via `.gitignore`.
-- **`Moviment.seq`**: IndexedDB no garanteix retornar les files en ordre d'inserció, així que `dataOperacio` per si sola no basta per ordenar cronològicament una llista — cal un desempat explícit per a moviments del mateix dia. `commitImport` assigna `seq` estrictament creixent seguint l'ordre del fitxer parsejat (mai l'ordre de retorn de la BD). El llistat de moviments (`views/MovimentsList.tsx`) fa servir `seq` directament com a desempat. **`seq` NO és fiable per a dades migrades des d'abans que existís aquest camp** (backfill "millor esforç", vegeu historial) — per això `lib/balance.ts` (`saldoEnData`) reconstrueix l'ordre cronològic real a partir de la cadena de saldos (`saldoPosteriorCents`/`importCents` de cada moviment), i només recorre a `seq` com a últim recurs quan la cadena no es pot resoldre (buit, primer moviment de la història, duplicats ambigus).
+- **xlsx via CDN de SheetJS, no npm** (backend): la versió publicada a npm té vulnerabilitats conegudes sense pedaç (prototip pollution, ReDoS) perquè SheetJS distribueix les versions corregides des del seu propi CDN. `backend/package.json` apunta a `https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz`.
+- **`Samples/` i `dades/` mai es commitegen**: `Samples/` conté fitxers reals d'extractes bancaris de l'usuari; `dades/` conté el `finances.db` real i les seves còpies de seguretat. Totes dues exclosos via `.gitignore`.
+- **`Moviment.seq`**: cap font de dades (abans IndexedDB, ara SQL sense `ORDER BY` explícit) garanteix retornar les files en ordre d'inserció, així que `dataOperacio` per si sola no basta per ordenar cronològicament una llista — cal un desempat explícit per a moviments del mateix dia. `commitImport` assigna `seq` estrictament creixent seguint l'ordre del fitxer parsejat (mai l'ordre de retorn de la BD). El llistat de moviments (`views/MovimentsList.tsx`) fa servir `seq` directament com a desempat. `lib/balance.ts` (`saldoEnData`, frontend) reconstrueix igualment l'ordre cronològic real a partir de la cadena de saldos (`saldoPosteriorCents`/`importCents` de cada moviment) per no dependre només de `seq` en dades antigues, i només hi recorre com a últim recurs quan la cadena no es pot resoldre (buit, primer moviment de la història, duplicats ambigus).
 
 ### Estat de les proves
 
-91 tests (Vitest), tots passant. `npm run build` i `npx tsc -b --noEmit` nets. Cobertura:
-- Parsers (Norma 43 amb fixtures sintètiques que repliquen l'estructura validada, ING/BBVA/OpenBank amb `RawTable` sintètics).
-- Deduplicació (col·lisions, mateix moviment en comptes diferents, límit documentat).
-- Utilitats de `lib/` (números, dates, concepte, hash, categorització, transferències, saldo, resum mensual).
-- `db/schema.test.ts` i `db/operations.test.ts` amb `fake-indexeddb` (dev dependency): regressió del bug de seeding de categories, de `reinicialitzaBaseDades`, de `eliminaTotsElsMoviments`, de l'assignació de `seq` a `commitImport`, i de la migració real v2→v3 (simulant un usuari amb dades ja existents).
+Backend: 73 tests (Vitest) — parsers, dedup, `lib/`, `db/operations.ts` contra SQLite en memòria (`GESFAM_DB_PATH=':memory:'`), `db/client.ts` (migracions) i `db/backupFile.ts` (còpia + retenció). Frontend: 22 tests — `lib/balance.ts`, `lib/summary.ts`, `lib/dates.ts`, `lib/numbers.ts` (només lògica de visualització, ja no hi ha res a testejar amb `fake-indexeddb`). `npx tsc -b` net a totes dues bandes, `npm run build` (frontend) i `oxlint` (frontend) nets.
 
-A més de les proves unitàries, cada fase s'ha verificat amb un script d'integració puntual (no committed) que importa els fitxers reals de `Samples/` dues vegades seguides via `fake-indexeddb`, confirmant 0 duplicats/0 files perdudes en la reimportació — el criteri d'acceptació explícit de la Fase 1.
+Verificació addicional (no automatitzada, feta manualment durant la migració d'arquitectura, vegeu historial): migració de la còpia de seguretat JSON real de l'usuari (4 comptes, 266 moviments, 4 lots, 23 categories, 15 regles) a SQLite amb comparació camp a camp — 0 diferències reals; arrencada de `npm start` real contra `dades/finances.db` migrat, import/undo/eliminar compte de prova via HTTP (confirmant que `backupDbFile()` es dispara), i reinici del servidor confirmant que les dades hi són intactes.
 
 ### Pendent / coses obertes
 
 - **[OBERT] de l'especificació, sense confirmar encara**: despesa difusa a la previsió (fase 4) i llindar d'alerta de saldo mínim.
+- **Migració d'arquitectura pendent de validació de l'usuari** (vegeu criteri d'acceptació a l'historial) — **no s'ha d'iniciar la Fase 3 fins que l'usuari ho confirmi**.
 - **Fase 3 (recurrents) i Fase 4 (previsió)**: no iniciades.
 - **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
-- El bundle de producció supera els 500 kB (principalment per `xlsx` i `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
-- No hi ha commit ni push de la Fase 2, del menú de manteniment, ni de la correcció d'ordenació encara (últim commit: `b4be46e`, només Fase 1).
-- Si l'usuari ja té dades reals importades al navegador (versió Fase 2 sense `seq`), la migració a la versió 3 assigna un `seq` d'ordre "millor esforç" (per data, després per data d'importació del lot) a les dades antigues, ja que l'ordre original exacte del fitxer no es pot recuperar retroactivament; les importacions noves sí que tindran l'ordre exacte del fitxer.
+- El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
+- Verificació manual en navegador (clic a clic) de la migració encara pendent per part de l'usuari — la verificació feta fins ara ha estat via API (curl) i tests automatitzats, no interacció real amb la UI.
+- Cap canvi d'aquesta migració s'ha commitejat ni pujat encara (últim commit `2b68f78`, Fase 2 + correccions).
 
 ## 2. Historial de canvis
+
+### 2026-07-06 — Manteniment: restaurar una còpia de seguretat automàtica
+
+L'usuari va preguntar com recuperar una còpia automàtica del `.db` (les que `backupDbFile()` fa soles abans de cada importació/operació destructiva) — fins ara calia aturar el servidor i copiar el fitxer a mà, sense cap suport a la UI. Afegit:
+
+- `backend/src/db/backupFile.ts`: `listBackupFiles()` (llista `dades/backups/`, més recent primer, amb data i mida) i `restoreBackup(filename)` (substitueix `finances.db` pel fitxer triat). `restoreBackup` primer fa una còpia de seguretat de l'estat actual (per si cal desfer la restauració), tanca la connexió, elimina els sidecars `-wal`/`-shm` obsolets (pertanyen al fitxer que s'està substituint, no al restaurat) i reobre la BD. Valida el nom de fitxer (sense `..`, `/`, `\`) per evitar path traversal des de la ruta de l'API.
+- `backend/src/routes.ts`: `GET /manteniment/backups`, `POST /manteniment/backups/:filename/restaura`.
+- `frontend/src/views/Maintenance.tsx`: nova secció "Restaurar una còpia de seguretat automàtica" (component `RestauraCopies`) amb una taula (data, mida) i un botó "Restaura" per fila, amb `confirm()` explícit abans d'executar.
+- Nous tests a `backupFile.test.ts` (llistat buit/amb contingut, restauració amb còpia de seguretat prèvia real, rebuig de noms de fitxer no vàlids o inexistents) — backend a 80 tests.
+
+### 2026-07-06 — Bug real (post-migració): "Aplica les regles" no funcionava per a una regla amb categoria òrfena
+
+**Reportat per l'usuari mentre provava l'app real** (`npm start` contra les dades migrades): va crear la categoria "Ajuntament" i la regla "Recibo AJ. CASTELLOLI", i en prémer "Aplica les regles" no semblava fer res.
+
+Causa arrel: la regla es va crear amb un `categoriaId` que no corresponia a cap categoria existent (una categoria òrfena — l'usuari confirma que no havia esborrat cap categoria, així que l'origen exacte al formulari del frontend no s'ha pogut reproduir del tot, però `createRegla`/`setMovimentCategoria` mai validaven que la categoria existís abans de desar-la). `aplicaReglesAMovimentsSenseCategoria()` sí que va trobar i actualitzar els 5 moviments que contenien "Recibo AJ. CASTELLOLI", però els va deixar amb un `categoriaId` que no apareix a `categories` — a la UI això es veu idèntic a "sense categoria", d'aquí la percepció que "no ha funcionat".
+
+Correccions:
+- `backend/src/db/operations.ts`: `createRegla` i `setMovimentCategoria` ara validen (`existeixCategoria`) que la categoria referenciada existeixi abans de desar, i llencen un error clar en cas contrari — tanca la classe de bug sencera, independentment de com s'arribés a l'estat anterior. Nous tests de regressió a `operations.test.ts`.
+- `backend/src/routes.ts`: `POST /regles` i `PATCH /moviments/:id` ara atrapen aquest error i el retornen com a 400 amb missatge, en lloc de deixar-lo pujar com a 500 sense format.
+- `frontend/src/views/CategoriesManager.tsx`: dos arranjaments defensius al formulari de regles nou, encara que no s'hagi pogut confirmar que siguin la causa exacta d'aquest cas concret: (1) `novaCategoriaRegla` (l'estat del `<select>` de categoria) ara es re-sincronitza per `useEffect` quan la categoria seleccionada ja no existeix a la llista o encara no se n'ha seleccionat cap vàlida — abans només s'inicialitzava un cop amb `useState`, i podia quedar apuntant a un id obsolet sense que el desplegable ho reflectís visualment; (2) errors de `createRegla` ara es mostren a l'usuari en lloc de perdre's com a promesa rebutjada sense gestionar. A més, `categoriaNom()` ara mostra "⚠ categoria inexistent (id)" en lloc de l'id pelat, perquè una regla òrfena futura sigui visible d'un cop d'ull.
+- **Dades reals reparades**: els 5 moviments "Recibo AJ. CASTELLOLI" reassignats a "Ajuntament" (la categoria correcta) via `PATCH /api/moviments/:id`, i la regla òrfena esborrada. Verificat que ja no queda cap moviment amb aquesta categoria inexistent i que `POST /api/regles/aplica` torna a funcionar net (0 actualitzacions, ja no hi ha res pendent de categoritzar amb les regles actuals).
+
+### 2026-07-06 — Migració d'arquitectura: de Dexie/IndexedDB a backend Node + SQLite
+
+A petició explícita de l'usuari (especificació actualitzada, seccions 1/2/pla de fases), tot el que abans vivia al navegador via Dexie passa a un backend Node/TypeScript/Express local amb SQLite en un fitxer. **Aquesta migració encara no ha estat validada per l'usuari — no s'ha d'iniciar la Fase 3 fins que ho confirmi.**
+
+Canvis:
+- **Monorepo amb npm workspaces** (`backend/`, `frontend/`), arrel amb `npm start` (build del frontend + arrencada del backend), `npm run dev` (backend i frontend en mode desenvolupament, via `concurrently`), `npm test` (tots dos workspaces).
+- **`backend/`**: nou. `db/migrations/001_init.sql` (esquema equivalent al de Dexie: `comptes`, `categories`, `regles`, `lots`, `moviments` + índexs), `db/client.ts` (`node:sqlite` `DatabaseSync`, runner de migracions fet a mà versionat per nom de fitxer, WAL mode), `db/operations.ts` (port 1:1 de l'antic `db/operations.ts` de Dexie a SQL preparat), `db/backupFile.ts` (còpia automàtica de `finances.db` — amb checkpoint de WAL previ — abans de cada importació i operació destructiva, retenint les 20 més recents), `routes.ts` + `server.ts` (API REST a `/api/*`, servint el frontend ja compilat, obrint el navegador en arrencar), `migrateFromJson.ts` (script d'un sol ús). Parsers, dedup i el subconjunt de `lib/` necessari per parsejar es van copiar del frontend (mateixa lògica, sense canvis de comportament) i adaptats perquè `importFile.ts` rebi `{name, buffer: ArrayBuffer}` en lloc d'un `File` del DOM.
+- **`frontend/`**: eliminats `db/` (Dexie), `parsers/`, `dedup/`, i les utilitats de `lib/` que ja no calen al navegador (`categorization.ts`, `concept.ts`, `hash.ts`, `encoding.ts`, `internalTransfers.ts`); `numbers.ts`/`dates.ts` retallats a només les funcions de visualització. Nou `api/` (`types.ts` amb les formes de dades, `client.ts` amb totes les crides `fetch` — mateixos noms de funció que l'antic `db/operations.ts` per minimitzar canvis a les vistes). Totes les vistes/components adaptats als nous imports; `ImportWizard.tsx`/`ManualMapping.tsx` reescrits perquè el parseig (automàtic i manual) es faci via `POST /api/importacio/previsualitza`/`previsualitza-manual` en lloc de cridar els parsers localment.
+- **Decisions tècniques** (justificades a la secció Arquitectura): `node:sqlite` en lloc de `better-sqlite3` (sense compilació nativa), migracions SQL fetes a mà en lloc d'un ORM, sense paquet compartit entre backend i frontend (còpies trimmed en lloc de tooling de monorepo addicional), `esTransferenciaInterna`/altres booleans com a INTEGER 0/1 amb mapeig manual a les interfícies camelCase.
+- **`localStorage`**: només es manté per a `useCompteSeleccio` (preferència d'interfície: quins comptes estan seleccionats), tal com demanava l'usuari explícitament.
+
+**Migració de dades real**: `migrateFromJson.ts` executat contra la còpia de seguretat JSON real de l'usuari (`gesfam-copia-seguretat.json`: 4 comptes, 266 moviments, 4 lots, 23 categories, 15 regles). Verificat camp a camp contra l'original — 0 diferències reals (l'única discrepància aparent, `esTransferenciaInterna` explícit a `false` enlloc d'absent, és una normalització esperada: SQL no té concepte de "columna absent", i semànticament `undefined`/`false` són equivalents aquí). Carregat a `dades/finances.db` real (fora de git, com sempre).
+
+**Verificació end-to-end**: `npm start` real contra les dades migrades — index.html servit correctament, els 4 comptes i 266 moviments reals accessibles via `/api/comptes`/`/api/moviments`; import/undo/eliminar-compte de prova via HTTP confirmant que `backupDbFile()` es dispara (fitxers a `dades/backups/`); reinici complet del servidor confirmant que les dades hi són intactes (criteri d'acceptació: "les dades sobreviuen a reiniciar el servidor"). Pendent: prova manual en navegador per part de l'usuari (aquesta verificació ha estat via `curl`/tests automatitzats, no clic a clic a la UI).
 
 ### 2026-07-06 — Format d'imports consistent a tota l'aplicació
 A petició de l'usuari, tots els camps d'import/saldo de la UI (no només la taula de Moviments, que ja ho tenia) ara mostren el format amb separador de milers, sense el símbol "€", i alineats a la dreta: previsualització de `ImportWizard.tsx`, columna Saldo i Total de `Dashboard.tsx` i `BalanceAtDate.tsx`, imports de "Transferències internes suggerides" i taula de `Summary.tsx` (Ingressos/Despeses). L'exportació a CSV de `MovimentsList.tsx` es manté amb el símbol "€", ja que és un fitxer per a consum extern, no un camp de la interfície.

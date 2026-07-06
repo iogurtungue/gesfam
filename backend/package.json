@@ -1,0 +1,28 @@
+{
+  "name": "backend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "dev": "cross-env GESFAM_NO_OPEN=1 tsx watch src/server.ts",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "migrate-json": "tsx src/migrateFromJson.ts"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "multer": "^2.0.1",
+    "open": "^10.1.2",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
+  },
+  "devDependencies": {
+    "@types/express": "^5.0.3",
+    "@types/multer": "^1.4.12",
+    "@types/node": "^24.13.2",
+    "cross-env": "^7.0.3",
+    "tsx": "^4.20.6",
+    "typescript": "~6.0.2",
+    "vitest": "^3.0.5"
+  }
+}
