@@ -19,6 +19,9 @@ dist-ssr
 # SQLite database file and its automatic backups (personal financial data, never commit)
 /dades/
 
+# Notes personals de treball, no forma part del projecte
+/continuar.txt
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
