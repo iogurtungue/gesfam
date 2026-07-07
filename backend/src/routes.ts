@@ -2,7 +2,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import * as ops from './db/operations.ts';
 import type { Backup } from './db/operations.ts';
-import { listBackupFiles, restoreBackup } from './db/backupFile.ts';
+import { backupDbFile, listBackupFiles, restoreBackup } from './db/backupFile.ts';
 import { applyColumnMapping, type ColumnMapping } from './parsers/columnMapping.ts';
 import { importFile, readRawTable } from './parsers/importFile.ts';
 import type { AccountType, BankId, ParsedMoviment } from './parsers/types.ts';
@@ -144,6 +144,11 @@ router.post('/manteniment/elimina-moviments', (_req, res) => {
 
 router.get('/manteniment/backups', (_req, res) => {
   res.json(listBackupFiles());
+});
+
+router.post('/manteniment/backups', (_req, res) => {
+  backupDbFile();
+  res.status(201).json(listBackupFiles()[0] ?? null);
 });
 
 router.post('/manteniment/backups/:filename/restaura', (req, res) => {

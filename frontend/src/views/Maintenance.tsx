@@ -1,8 +1,16 @@
 import { useEffect, useState } from 'react';
-import { eliminaTotsElsMoviments, exportaCopiaSeguretat, listBackupFiles, reinicialitzaBaseDades, restoreBackup } from '../api/client';
+import {
+  creaCopiaSeguretatDb,
+  eliminaTotsElsMoviments,
+  exportaCopiaSeguretat,
+  importaCopiaSeguretat,
+  listBackupFiles,
+  reinicialitzaBaseDades,
+  restoreBackup,
+} from '../api/client';
 import { esborraSeleccioDesada } from '../hooks/useCompteSeleccio';
 import { avui, formatDateEs } from '../lib/dates';
-import type { BackupFileInfo } from '../api/types';
+import type { Backup as BackupData, BackupFileInfo } from '../api/types';
 
 interface Props {
   onReset: () => void;
@@ -31,6 +39,7 @@ function formatMida(bytes: number): string {
 function RestauraCopies({ onRestaurat }: { onRestaurat: () => void }) {
   const [backups, setBackups] = useState<BackupFileInfo[]>([]);
   const [restaurant, setRestaurant] = useState<string | null>(null);
+  const [creant, setCreant] = useState(false);
   const [missatge, setMissatge] = useState<string | null>(null);
 
   function carrega() {
@@ -40,6 +49,20 @@ function RestauraCopies({ onRestaurat }: { onRestaurat: () => void }) {
   useEffect(() => {
     carrega();
   }, []);
+
+  async function handleCrea() {
+    setCreant(true);
+    setMissatge(null);
+    try {
+      const nova = await creaCopiaSeguretatDb();
+      setMissatge(nova ? `Còpia de seguretat creada (${formatDataHora(nova.creatEl)}).` : 'No hi ha cap base de dades encara per copiar.');
+      carrega();
+    } catch (err) {
+      setMissatge(`Error creant la còpia de seguretat: ${(err as Error).message}`);
+    } finally {
+      setCreant(false);
+    }
+  }
 
   async function handleRestaura(b: BackupFileInfo) {
     if (
@@ -67,10 +90,15 @@ function RestauraCopies({ onRestaurat }: { onRestaurat: () => void }) {
 
   return (
     <div style={{ border: '1px solid #999', padding: 12, marginBottom: 16 }}>
-      <h3>Restaurar una còpia de seguretat automàtica</h3>
+      <h3>Còpies de seguretat automàtiques</h3>
       <p>
         Còpies del fitxer de dades fetes automàticament abans de cada importació o operació destructiva (es conserven les
         20 més recents). Restaurar-ne una substitueix totes les dades actuals.
+      </p>
+      <p>
+        <button onClick={handleCrea} disabled={creant}>
+          {creant ? 'Creant…' : 'Fes una còpia de seguretat ara'}
+        </button>
       </p>
       {backups.length === 0 ? (
         <p>No hi ha cap còpia de seguretat automàtica encara.</p>
@@ -112,6 +140,69 @@ async function descarregaCopiaSeguretat() {
   a.download = `gesfam-copia-seguretat-${avui()}.json`;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function esBackupValid(data: unknown): data is BackupData {
+  if (typeof data !== 'object' || data === null) return false;
+  const b = data as Record<string, unknown>;
+  return (
+    b.versio === 1 &&
+    Array.isArray(b.comptes) &&
+    Array.isArray(b.moviments) &&
+    Array.isArray(b.lots) &&
+    Array.isArray(b.categories) &&
+    Array.isArray(b.regles)
+  );
+}
+
+/** NFR secció 2: còpia de seguretat completa en JSON, perquè l'usuari no perdi res en canviar de navegador. */
+function CopiaSeguretatJSON({ onImportat }: { onImportat: () => void }) {
+  const [missatge, setMissatge] = useState<string | null>(null);
+
+  async function handleImporta(fitxer: File | undefined) {
+    if (!fitxer) return;
+    setMissatge(null);
+    try {
+      const text = await fitxer.text();
+      const data = JSON.parse(text);
+      if (!esBackupValid(data)) {
+        setMissatge('El fitxer no té el format esperat d\'una còpia de seguretat de GesFam.');
+        return;
+      }
+      if (
+        !confirm(
+          'Importar aquesta còpia de seguretat esborrarà TOTES les dades actuals (comptes, moviments, lots, categories i regles) i les substituirà pel contingut del fitxer. Vols continuar?',
+        )
+      ) {
+        return;
+      }
+      await importaCopiaSeguretat(data);
+      setMissatge('Còpia de seguretat importada correctament.');
+      onImportat();
+    } catch (err) {
+      setMissatge(`Error important el fitxer: ${(err as Error).message}`);
+    }
+  }
+
+  return (
+    <div style={{ border: '1px solid #999', padding: 12, marginBottom: 16 }}>
+      <h3>Còpia de seguretat (JSON)</h3>
+      <p>
+        Exporta totes les dades (comptes, moviments, lots, categories i regles) a un fitxer JSON descarregable, útil per
+        guardar-lo fora d'aquest ordinador o per canviar de navegador/dispositiu. Importar-ne un substitueix totes les dades
+        actuals.
+      </p>
+      <p>
+        <button onClick={descarregaCopiaSeguretat}>Exportar còpia de seguretat (JSON)</button>
+      </p>
+      <p>
+        <label>
+          Importar còpia de seguretat: <input type="file" accept=".json" onChange={(e) => handleImporta(e.target.files?.[0])} />
+        </label>
+      </p>
+      {missatge && <p>{missatge}</p>}
+    </div>
+  );
 }
 
 interface ZonaPerillProps {
@@ -174,6 +265,8 @@ export function Maintenance({ onReset }: Props) {
       <h2>Manteniment</h2>
 
       <RestauraCopies onRestaurat={onReset} />
+
+      <CopiaSeguretatJSON onImportat={onReset} />
 
       <ZonaPerill
         titol="Eliminar només els moviments"

@@ -11,6 +11,7 @@ node_modules
 dist
 dist-ssr
 *.local
+*.tsbuildinfo
 
 # Real bank export samples (personal financial data, never commit)
 /Samples/

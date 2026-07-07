@@ -125,6 +125,28 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 
 ## 2. Historial de canvis
 
+### 2026-07-07 — Còpia de seguretat del `.db` a petició (a més de les automàtiques)
+
+L'usuari va demanar poder disparar manualment una còpia de seguretat del fitxer de dades, del mateix tipus que les que ja es feien automàticament abans de cada importació/operació destructiva.
+
+- `backend/src/db/backupFile.ts`: sense canvis de lògica — `backupDbFile()` ja feia exactament això; només calia exposar-lo.
+- `backend/src/routes.ts`: nova ruta `POST /manteniment/backups` que crida `backupDbFile()` i retorna la còpia acabada de crear (o `null` si encara no existeix cap base de dades).
+- `frontend/src/api/client.ts`: nova funció `creaCopiaSeguretatDb()`.
+- `frontend/src/views/Maintenance.tsx`: la secció "Restaurar una còpia de seguretat automàtica" es renombra a "Còpies de seguretat automàtiques" i afegeix un botó "Fes una còpia de seguretat ara" a sobre de la taula existent; en crear-se, refresca la llista i mostra un missatge amb la data.
+- Sense taula/tests nous al backend (reutilitza `backupDbFile`, ja cobert per `backupFile.test.ts`); `tsc -b` net i tots els tests (80 backend, 22 frontend) continuen passant.
+
+### 2026-07-07 — Eliminada la pestanya "Saldos a una data"
+
+A petició de l'usuari. `frontend/src/views/BalanceAtDate.tsx` eliminat (sense cap altre ús ni test propi); `frontend/src/App.tsx` treu `'saldos'` de `Pestanya`/`PESTANYES` i la crida corresponent. `lib/balance.ts` es manté, ja que `Dashboard.tsx` encara el fa servir. Sense canvis de backend. `tsc -b` net i els 22 tests de frontend continuen passant.
+
+### 2026-07-07 — La pestanya "Còpia de seguretat" (JSON) s'integra a "Manteniment"
+
+A petició de l'usuari, s'elimina la pestanya independent "Còpia de seguretat" de la navegació principal: el seu contingut (exportar/importar totes les dades en un fitxer JSON) ara viu com una secció més dins de "Manteniment", junt amb la restauració de còpies automàtiques del `.db` i les zones de perill. Motiu: totes tres coses són operacions de manteniment/recuperació de dades, i tenir-les en una única pestanya és més coherent que repartir-les en dues.
+
+- `frontend/src/views/Backup.tsx`: eliminat. El seu contingut (`esBackupValid`, l'exportació i la importació de JSON) es mou a un nou component `CopiaSeguretatJSON` dins de `frontend/src/views/Maintenance.tsx`, renderitzat entre `RestauraCopies` i els blocs `ZonaPerill`.
+- `frontend/src/App.tsx`: treu `'backup'` de `Pestanya` i de `PESTANYES`, i la crida a `<Backup onImported={refresh} />`.
+- Sense canvis d'API ni de backend — és una reorganització purament de navegació/UI. `tsc -b` net i els 22 tests de frontend continuen passant.
+
 ### 2026-07-06 — Manteniment: restaurar una còpia de seguretat automàtica
 
 L'usuari va preguntar com recuperar una còpia automàtica del `.db` (les que `backupDbFile()` fa soles abans de cada importació/operació destructiva) — fins ara calia aturar el servidor i copiar el fitxer a mà, sense cap suport a la UI. Afegit:

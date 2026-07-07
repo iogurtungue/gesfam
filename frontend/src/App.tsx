@@ -6,25 +6,21 @@ import { useCompteSeleccio } from './hooks/useCompteSeleccio';
 import { ImportWizard } from './import/ImportWizard';
 import { LotsList } from './import/LotsList';
 import { AccountsManager } from './views/AccountsManager';
-import { Backup } from './views/Backup';
-import { BalanceAtDate } from './views/BalanceAtDate';
 import { CategoriesManager } from './views/CategoriesManager';
 import { Dashboard } from './views/Dashboard';
 import { Maintenance } from './views/Maintenance';
 import { MovimentsList } from './views/MovimentsList';
 import { Summary } from './views/Summary';
 
-type Pestanya = 'panell' | 'saldos' | 'moviments' | 'resum' | 'categories' | 'comptes' | 'importar' | 'backup' | 'manteniment';
+type Pestanya = 'panell' | 'moviments' | 'resum' | 'categories' | 'comptes' | 'importar' | 'manteniment';
 
 const PESTANYES: { id: Pestanya; label: string; ambSelector: boolean }[] = [
   { id: 'panell', label: 'Panell general', ambSelector: true },
-  { id: 'saldos', label: 'Saldos a una data', ambSelector: true },
   { id: 'moviments', label: 'Moviments', ambSelector: true },
   { id: 'resum', label: 'Resums', ambSelector: true },
   { id: 'categories', label: 'Categories i regles', ambSelector: false },
   { id: 'comptes', label: 'Comptes', ambSelector: false },
   { id: 'importar', label: 'Importar', ambSelector: false },
-  { id: 'backup', label: 'Còpia de seguretat', ambSelector: false },
   { id: 'manteniment', label: 'Manteniment', ambSelector: false },
 ];
 
@@ -81,7 +77,6 @@ function App() {
       {pestanyaActiva.ambSelector && <CompteSelector comptes={comptes} seleccio={seleccio} />}
 
       {pestanya === 'panell' && <Dashboard seleccionats={seleccio.seleccionats} />}
-      {pestanya === 'saldos' && <BalanceAtDate seleccionats={seleccio.seleccionats} />}
       {pestanya === 'moviments' && <MovimentsList seleccionats={seleccio.seleccionats} categories={categories} />}
       {pestanya === 'resum' && <Summary seleccionats={seleccio.seleccionats} categories={categories} />}
       {pestanya === 'categories' && <CategoriesManager categories={categories} regles={regles} onChanged={refresh} />}
@@ -92,7 +87,6 @@ function App() {
           <LotsList lots={lots} comptes={comptes} onChanged={refresh} />
         </>
       )}
-      {pestanya === 'backup' && <Backup onImported={refresh} />}
       {pestanya === 'manteniment' && <Maintenance onReset={refresh} />}
     </div>
   );

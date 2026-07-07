@@ -153,6 +153,10 @@ export function listBackupFiles(): Promise<BackupFileInfo[]> {
   return req('/manteniment/backups');
 }
 
+export function creaCopiaSeguretatDb(): Promise<BackupFileInfo | null> {
+  return req('/manteniment/backups', { method: 'POST' });
+}
+
 export function restoreBackup(filename: string): Promise<void> {
   return req(`/manteniment/backups/${encodeURIComponent(filename)}/restaura`, { method: 'POST' });
 }
