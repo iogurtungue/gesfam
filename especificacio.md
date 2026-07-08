@@ -4,9 +4,9 @@
 
 ## 1. Context i objectiu
 
-L'usuari treballa amb tres bancs espanyols: **Banc Sabadell**, **ING (España)** i **OpenBank**. Vol una aplicació d'ús estrictament personal que:
+L'usuari treballa amb quatre bancs espanyols: **Banc Sabadell**, **BBVA**, **ING (España)** i **OpenBank**. Vol una aplicació d'ús estrictament personal que:
 
-1. **Centralitzi els moviments bancaris** dels tres bancs, importats manualment mitjançant els fitxers d'extracte (CSV/Excel) que cada banc permet descarregar.
+1. **Centralitzi els moviments bancaris** dels quatre bancs, importats manualment mitjançant els fitxers d'extracte (CSV/Excel) que cada banc permet descarregar.
 2. **Generi una previsió de tresoreria** a 30, 60 i 90 dies (o horitzó configurable) a partir de la detecció de càrrecs i ingressos recurrents en l'històric.
 
 **[DECIDIT]** Entrada de dades: importació manual de fitxers. No hi ha integració amb API bancàries ni agregadors PSD2. No descartar-ho en el futur: l'arquitectura ha de deixar la porta oberta (capa d'ingesta desacoblada).
