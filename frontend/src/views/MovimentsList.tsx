@@ -1,21 +1,31 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
+import { creaConsultaSaldo } from '../lib/balance';
 import { avui, formatDateEs } from '../lib/dates';
 import { centsToEs } from '../lib/numbers';
 import {
+  aplicaReglesAMovimentsSenseCategoria,
   confirmaTransferencia,
+  createRegla,
   listMovimentsPerComptes,
   setMovimentCategoria,
   setTransferenciaInterna,
   suggereixTransferencies,
 } from '../api/client';
-import type { Categoria, Compte, Moviment, SuggerimentAmbDetall } from '../api/types';
+import type { Categoria, Compte, Moviment, ReglaCategoritzacio, SuggerimentAmbDetall } from '../api/types';
 
 type FiltreTipus = 'tots' | 'ingres' | 'carrec';
 type CampOrdre = 'dataOperacio' | 'concepteOriginal';
 
+interface FormRegla {
+  patro: string;
+  categoriaId: string;
+}
+
 interface Props {
   seleccionats: Compte[];
   categories: Categoria[];
+  regles: ReglaCategoritzacio[];
+  onChanged: () => void;
 }
 
 function csvField(value: string): string {
@@ -23,7 +33,7 @@ function csvField(value: string): string {
   return value;
 }
 
-export function MovimentsList({ seleccionats, categories }: Props) {
+export function MovimentsList({ seleccionats, categories, regles, onChanged }: Props) {
   const [moviments, setMoviments] = useState<Moviment[]>([]);
   const [dataDes, setDataDes] = useState('');
   const [dataFins, setDataFins] = useState('');
@@ -32,6 +42,9 @@ export function MovimentsList({ seleccionats, categories }: Props) {
   const [tipus, setTipus] = useState<FiltreTipus>('tots');
   const [ordre, setOrdre] = useState<{ camp: CampOrdre; direccio: 'asc' | 'desc' }>({ camp: 'dataOperacio', direccio: 'desc' });
   const [suggeriments, setSuggeriments] = useState<SuggerimentAmbDetall[]>([]);
+  const [reglaObertaPer, setReglaObertaPer] = useState<string | null>(null);
+  const [formRegla, setFormRegla] = useState<FormRegla | null>(null);
+  const [errorRegla, setErrorRegla] = useState<string | null>(null);
 
   const compteIds = seleccionats.map((c) => c.id).join(',');
   const compteAlias = useMemo(() => {
@@ -42,6 +55,18 @@ export function MovimentsList({ seleccionats, categories }: Props) {
     const map = new Map(categories.map((c) => [c.id, c.nom]));
     return (categoriaId?: string) => (categoriaId ? (map.get(categoriaId) ?? '') : '');
   }, [categories]);
+
+  // Per a cada compte, una funció data -> saldo conegut en aquella data (o
+  // l'anterior més recent), perquè les cel·les de Saldo d'un compte sense
+  // moviment aquell dia puguin mostrar igualment el seu saldo vigent.
+  const consultaSaldoPerCompte = useMemo(() => {
+    const map = new Map<string, (dataISO: string) => number | null>();
+    for (const c of seleccionats) {
+      const movimentsCompte = moviments.filter((m) => m.compteId === c.id);
+      map.set(c.id, creaConsultaSaldo(movimentsCompte, c.tipus));
+    }
+    return map;
+  }, [moviments, seleccionats]);
 
   function refresh() {
     listMovimentsPerComptes(seleccionats.map((c) => c.id)).then(setMoviments);
@@ -112,6 +137,32 @@ export function MovimentsList({ seleccionats, categories }: Props) {
     await confirmaTransferencia(s);
     setSuggeriments((prev) => prev.filter((x) => x !== s));
     setMoviments((prev) => prev.map((m) => (m.id === s.a || m.id === s.b ? { ...m, esTransferenciaInterna: true } : m)));
+  }
+
+  function obreFormRegla(m: Moviment) {
+    setReglaObertaPer(m.id);
+    setFormRegla({ patro: m.concepteNormalitzat, categoriaId: m.categoriaId ?? categories[0]?.id ?? '' });
+    setErrorRegla(null);
+  }
+
+  function tancaFormRegla() {
+    setReglaObertaPer(null);
+    setFormRegla(null);
+    setErrorRegla(null);
+  }
+
+  async function handleDesaRegla(aplicaAra: boolean) {
+    if (!formRegla || !formRegla.patro.trim() || !formRegla.categoriaId) return;
+    setErrorRegla(null);
+    try {
+      await createRegla({ patro: formRegla.patro.trim(), categoriaId: formRegla.categoriaId, prioritat: regles.length });
+      if (aplicaAra) await aplicaReglesAMovimentsSenseCategoria();
+      tancaFormRegla();
+      onChanged();
+      refresh();
+    } catch (err) {
+      setErrorRegla((err as Error).message);
+    }
   }
 
   return (
@@ -205,50 +256,100 @@ export function MovimentsList({ seleccionats, categories }: Props) {
           </thead>
           <tbody>
             {filtrats.map((m) => (
-              <tr key={m.id} style={m.esTransferenciaInterna ? { opacity: 0.6 } : undefined}>
-                <td style={{ ...cellStyle, ...cellData }}>{formatDateEs(m.dataOperacio)}</td>
-                <td style={{ ...cellStyle, ...cellConcepte }}>{m.concepteOriginal}</td>
-                <td style={{ ...cellStyle, ...cellCategoria }}>
-                  <select
-                    value={m.categoriaId ?? ''}
-                    onChange={(e) => handleCategoriaChange(m.id, e.target.value)}
-                    style={{ width: '100%', fontSize: 12 }}
-                  >
-                    <option value="">--</option>
-                    {categories.map((c) => (
-                      <option key={c.id} value={c.id}>
-                        {c.nom}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td style={{ ...cellStyle, ...cellTI }}>
-                  <input
-                    type="checkbox"
-                    checked={m.esTransferenciaInterna ?? false}
-                    onChange={(e) => handleTransferenciaChange(m.id, e.target.checked)}
-                  />
-                </td>
-                {seleccionats.map((c) => (
-                  <Fragment key={c.id}>
-                    {c.id === m.compteId ? (
-                      <>
-                        <td style={{ ...cellStyle, ...cellNumeric, ...colorImport(m.importCents) }}>
-                          {centsToEs(m.importCents, false)}
-                        </td>
-                        <td style={{ ...cellStyle, ...cellNumeric, fontWeight: 'bold' }}>
-                          {m.saldoPosteriorCents !== null ? centsToEs(m.saldoPosteriorCents, false) : '—'}
-                        </td>
-                      </>
-                    ) : (
-                      <>
+              <Fragment key={m.id}>
+                <tr style={m.esTransferenciaInterna ? { opacity: 0.6 } : undefined}>
+                  <td style={{ ...cellStyle, ...cellData }}>{formatDateEs(m.dataOperacio)}</td>
+                  <td style={{ ...cellStyle, ...cellConcepte }}>{m.concepteOriginal}</td>
+                  <td style={{ ...cellStyle, ...cellCategoria }}>
+                    <div style={{ display: 'flex', gap: 2, alignItems: 'center' }}>
+                      <select
+                        value={m.categoriaId ?? ''}
+                        onChange={(e) => handleCategoriaChange(m.id, e.target.value)}
+                        style={{ width: '100%', fontSize: 12 }}
+                      >
+                        <option value="">--</option>
+                        {categories.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.nom}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => (reglaObertaPer === m.id ? tancaFormRegla() : obreFormRegla(m))}
+                        title="Afegeix una regla de categorització automàtica per aquest concepte"
+                        style={{ fontSize: 12, lineHeight: 1, padding: '1px 5px' }}
+                      >
+                        +
+                      </button>
+                    </div>
+                  </td>
+                  <td style={{ ...cellStyle, ...cellTI }}>
+                    <input
+                      type="checkbox"
+                      checked={m.esTransferenciaInterna ?? false}
+                      onChange={(e) => handleTransferenciaChange(m.id, e.target.checked)}
+                    />
+                  </td>
+                  {seleccionats.map((c) => {
+                    if (c.id === m.compteId) {
+                      return (
+                        <Fragment key={c.id}>
+                          <td style={{ ...cellStyle, ...cellNumeric, ...colorImport(m.importCents) }}>
+                            {centsToEs(m.importCents, false)}
+                          </td>
+                          <td style={{ ...cellStyle, ...cellNumeric, fontWeight: 'bold' }}>
+                            {m.saldoPosteriorCents !== null ? centsToEs(m.saldoPosteriorCents, false) : '—'}
+                          </td>
+                        </Fragment>
+                      );
+                    }
+                    const saldoAnterior = consultaSaldoPerCompte.get(c.id)?.(m.dataOperacio) ?? null;
+                    return (
+                      <Fragment key={c.id}>
                         <td style={cellStyle} />
-                        <td style={cellStyle} />
-                      </>
-                    )}
-                  </Fragment>
-                ))}
-              </tr>
+                        <td style={{ ...cellStyle, ...cellNumeric, color: '#999' }}>
+                          {saldoAnterior !== null ? centsToEs(saldoAnterior, false) : ''}
+                        </td>
+                      </Fragment>
+                    );
+                  })}
+                </tr>
+                {reglaObertaPer === m.id && formRegla && (
+                  <tr>
+                    <td colSpan={4 + seleccionats.length * 2} style={{ ...cellStyle, background: '#f7f7f7' }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <strong>Nova regla:</strong>
+                        <label>
+                          Si el concepte conté:{' '}
+                          <input
+                            value={formRegla.patro}
+                            onChange={(e) => setFormRegla({ ...formRegla, patro: e.target.value })}
+                            style={{ width: 280 }}
+                          />
+                        </label>
+                        <label>
+                          Categoria:{' '}
+                          <select
+                            value={formRegla.categoriaId}
+                            onChange={(e) => setFormRegla({ ...formRegla, categoriaId: e.target.value })}
+                          >
+                            {categories.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.nom}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <button onClick={() => handleDesaRegla(false)}>Desa la regla</button>
+                        <button onClick={() => handleDesaRegla(true)}>Desa i aplica als moviments sense categoria</button>
+                        <button onClick={tancaFormRegla}>Cancel·la</button>
+                      </div>
+                      {errorRegla && <p style={{ color: '#c00' }}>{errorRegla}</p>}
+                    </td>
+                  </tr>
+                )}
+              </Fragment>
             ))}
           </tbody>
         </table>
@@ -275,8 +376,8 @@ function amplaFixa(px: number): React.CSSProperties {
 const cellData: React.CSSProperties = amplaFixa(80);
 // Concepte guanya espai per a la resta de columnes mostrant-se en ~2 files en lloc d'una sola línia llarga.
 const cellConcepte: React.CSSProperties = { whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 220 };
-// 135px (un 50% més ampla que els 90px inicials) perquè els noms de categoria hi càpiguen més bé.
-const cellCategoria: React.CSSProperties = amplaFixa(135);
+// 162px (135px +20%, per fer lloc també al botó "+" de nova regla).
+const cellCategoria: React.CSSProperties = amplaFixa(162);
 // La més estreta possible: només cal encabir-hi la casella de selecció.
 const cellTI: React.CSSProperties = { ...amplaFixa(28), textAlign: 'center', padding: '2px 4px' };
 // P.ex. "-12.345,67" és un import/saldo raonablement gran per a un ús personal.

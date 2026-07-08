@@ -86,3 +86,53 @@ export function saldoEnData(moviments: MovimentPerSaldo[], tipus: AccountType, d
   }
   return null;
 }
+
+/**
+ * Same result as calling saldoEnData() repeatedly for many different dates
+ * of the same account, but computed once instead of re-filtering/reordering
+ * the whole history on every call — used by the Moviments table to fill in
+ * an account's running balance on rows where it had no movement that day
+ * (spec: totes les columnes de saldo s'omplen a cada fila, amb independència
+ * de si hi ha import per aquell compte).
+ */
+export function creaConsultaSaldo(moviments: MovimentPerSaldo[], tipus: AccountType): (dataISO: string) => number | null {
+  const punts: { dataOperacio: string; saldoCents: number }[] = [];
+
+  if (tipus === 'targeta') {
+    const perData = new Map<string, number>();
+    for (const m of moviments) {
+      perData.set(m.dataOperacio, (perData.get(m.dataOperacio) ?? 0) + m.importCents);
+    }
+    let acumulat = 0;
+    for (const data of [...perData.keys()].sort()) {
+      acumulat += perData.get(data)!;
+      punts.push({ dataOperacio: data, saldoCents: acumulat });
+    }
+  } else {
+    const perData = new Map<string, number>();
+    let saldoConegut: number | null = null;
+    for (const m of ordenaCronologicament(moviments)) {
+      if (m.saldoPosteriorCents !== null) saldoConegut = m.saldoPosteriorCents;
+      if (saldoConegut !== null) perData.set(m.dataOperacio, saldoConegut);
+    }
+    for (const data of [...perData.keys()].sort()) {
+      punts.push({ dataOperacio: data, saldoCents: perData.get(data)! });
+    }
+  }
+
+  return (dataISO: string) => {
+    let baix = 0;
+    let alt = punts.length - 1;
+    let resultat: number | null = null;
+    while (baix <= alt) {
+      const mig = (baix + alt) >> 1;
+      if (punts[mig].dataOperacio <= dataISO) {
+        resultat = punts[mig].saldoCents;
+        baix = mig + 1;
+      } else {
+        alt = mig - 1;
+      }
+    }
+    return resultat;
+  };
+}

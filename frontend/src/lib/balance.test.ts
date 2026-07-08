@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { saldoEnData } from './balance';
+import { creaConsultaSaldo, saldoEnData } from './balance';
 
 describe('saldoEnData', () => {
   it('returns the running balance of the latest movement on or before the date (compte corrent)', () => {
@@ -74,5 +74,35 @@ describe('saldoEnData', () => {
     const E = { dataOperacio: '2026-06-02', importCents: -50, saldoPosteriorCents: 1050, seq: 2 };
 
     expect(saldoEnData([day1, D, E], 'corrent', '2026-06-02')).toBe(1050);
+  });
+});
+
+describe('creaConsultaSaldo', () => {
+  it('agrees with saldoEnData across many dates for a compte corrent, including dates without a movement (carry-forward)', () => {
+    const moviments = [
+      { dataOperacio: '2026-06-01', importCents: -1000, saldoPosteriorCents: 9000, seq: 0 },
+      { dataOperacio: '2026-06-05', importCents: 500, saldoPosteriorCents: 9500, seq: 1 },
+      { dataOperacio: '2026-06-10', importCents: -200, saldoPosteriorCents: 9300, seq: 2 },
+    ];
+    const consulta = creaConsultaSaldo(moviments, 'corrent');
+    for (const data of ['2026-05-31', '2026-06-01', '2026-06-03', '2026-06-05', '2026-06-07', '2026-06-10', '2026-06-20']) {
+      expect(consulta(data)).toBe(saldoEnData(moviments, 'corrent', data));
+    }
+  });
+
+  it('agrees with saldoEnData for a targeta account (accumulated debt), including a date with no charge that day', () => {
+    const moviments = [
+      { dataOperacio: '2026-06-01', importCents: -1000, saldoPosteriorCents: null, seq: 0 },
+      { dataOperacio: '2026-06-05', importCents: -500, saldoPosteriorCents: null, seq: 1 },
+      { dataOperacio: '2026-06-10', importCents: -200, saldoPosteriorCents: null, seq: 2 },
+    ];
+    const consulta = creaConsultaSaldo(moviments, 'targeta');
+    for (const data of ['2026-05-31', '2026-06-01', '2026-06-07', '2026-06-10']) {
+      expect(consulta(data)).toBe(saldoEnData(moviments, 'targeta', data));
+    }
+  });
+
+  it('returns null for an account with no movements at all', () => {
+    expect(creaConsultaSaldo([], 'corrent')('2026-06-01')).toBeNull();
   });
 });
