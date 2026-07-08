@@ -82,8 +82,9 @@ frontend/src/
   hooks/useCompteSeleccio.ts   Selecció global de comptes, persistida a localStorage (preferència
                                 d'interfície, no dada de negoci — es manté igual que abans)
   components/CompteSelector.tsx
-  views/            Dashboard.tsx, BalanceAtDate.tsx, MovimentsList.tsx, Summary.tsx,
-                    CategoriesManager.tsx, AccountsManager.tsx, Backup.tsx, Maintenance.tsx
+  views/            Dashboard.tsx, MovimentsList.tsx, Summary.tsx, CategoriesManager.tsx,
+                    AccountsManager.tsx, Maintenance.tsx (inclou la còpia de seguretat JSON i les
+                    còpies automàtiques del `.db`; no hi ha pestanyes separades per a cap de les dues)
   import/           ImportWizard.tsx (puja fitxers via FormData a /api/importacio/*),
                     ManualMapping.tsx, LotsList.tsx
   App.tsx           Navegació per pestanyes + estat global (comptes/lots/categories/regles)
@@ -109,7 +110,7 @@ frontend/src/
 
 ### Estat de les proves
 
-Backend: 73 tests (Vitest) — parsers, dedup, `lib/`, `db/operations.ts` contra SQLite en memòria (`GESFAM_DB_PATH=':memory:'`), `db/client.ts` (migracions) i `db/backupFile.ts` (còpia + retenció). Frontend: 22 tests — `lib/balance.ts`, `lib/summary.ts`, `lib/dates.ts`, `lib/numbers.ts` (només lògica de visualització, ja no hi ha res a testejar amb `fake-indexeddb`). `npx tsc -b` net a totes dues bandes, `npm run build` (frontend) i `oxlint` (frontend) nets.
+Backend: 86 tests (Vitest) — parsers, dedup, `lib/`, `db/operations.ts` contra SQLite en memòria (`GESFAM_DB_PATH=':memory:'`), `db/client.ts` (migracions) i `db/backupFile.ts` (còpia + retenció). Frontend: 25 tests — `lib/balance.ts`, `lib/summary.ts`, `lib/dates.ts`, `lib/numbers.ts` (només lògica de visualització, ja no hi ha res a testejar amb `fake-indexeddb`; el formulari de "nova regla" de `MovimentsList.tsx` reutilitza `createRegla`/`aplicaReglesAMovimentsSenseCategoria`, ja coberts pels tests de `CategoriesManager`/backend, i no té tests propis). `npx tsc -b` net a totes dues bandes, `npm run build` (frontend) i `oxlint` (frontend) nets.
 
 Verificació addicional (no automatitzada, feta manualment durant la migració d'arquitectura, vegeu historial): migració de la còpia de seguretat JSON real de l'usuari (4 comptes, 266 moviments, 4 lots, 23 categories, 15 regles) a SQLite amb comparació camp a camp — 0 diferències reals; arrencada de `npm start` real contra `dades/finances.db` migrat, import/undo/eliminar compte de prova via HTTP (confirmant que `backupDbFile()` es dispara), i reinici del servidor confirmant que les dades hi són intactes.
 
@@ -124,6 +125,48 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - Cap canvi d'aquesta migració s'ha commitejat ni pujat encara (últim commit `2b68f78`, Fase 2 + correccions).
 
 ## 2. Historial de canvis
+
+### 2026-07-08 — Edició de regles de categorització (patró i categoria) + ordre i format de la llista
+
+L'usuari va demanar poder editar una regla existent (canviar el patró i/o la categoria) en lloc de només poder-la esborrar i recrear, i que la llista de regles es mostrés ordenada per categoria amb la categoria abans que el patró.
+
+- `backend/src/db/operations.ts`: nova `actualitzaRegla(id, { patro?, categoriaId? })` — actualitza només els camps presents; valida (igual que `createRegla`) que `categoriaId`, si es dona, apunti a una categoria existent.
+- `backend/src/routes.ts`: nova ruta `PATCH /regles/:id`.
+- `frontend/src/api/client.ts`: nova `actualitzaRegla(id, data)`.
+- `frontend/src/views/CategoriesManager.tsx`: cada regla de la llista té ara un botó "Edita" que la converteix en un selector de categoria + un input de patró editables in-line (mateix patró que l'edició de categories); la llista es mostra ordenada per nom de categoria i, dins de cada categoria, per patró (`reglesOrdenades`, purament de visualització — no toca `prioritat`, que continua determinant quina regla guanya en cas de conflicte). El format de cada línia també es va canviar abans a "Categoria ← patró" (categoria primer).
+- Tests nous a `backend/src/db/operations.test.ts` (`actualitzaRegla`): 86 tests backend (abans 84), 25 frontend, `tsc -b`/`oxlint`/`vite build` nets a totes dues bandes.
+
+### 2026-07-08 — Afegir una regla de categorització des de la mateixa pàgina de Moviments
+
+L'usuari va demanar poder crear una regla de categorització automàtica sense haver de sortir de la pestanya de Moviments: en un moviment concret, un botó "+regla" que proposi una regla amb el mateix concepte (editable) i l'opció d'aplicar-la de seguida.
+
+- `frontend/src/views/MovimentsList.tsx`: cada fila té ara un botó "+regla" al costat del selector de categoria. En clicar-lo, es desplega una fila addicional amb un formulari (patró de text preomplert amb `concepteNormalitzat` del moviment — el mateix camp que `pickCategoriaId` compara al backend — i editable, i un selector de categoria preomplert amb la del moviment o la primera disponible). Dos botons: "Desa la regla" (només la crea) i "Desa i aplica als moviments sense categoria" (la crea i tot seguit crida `aplicaReglesAMovimentsSenseCategoria()`, igual que el botó equivalent de la pestanya Categories). Reutilitza `createRegla`/`aplicaReglesAMovimentsSenseCategoria` ja existents — sense endpoints nous.
+- `MovimentsList` passa a rebre `regles` (per calcular la `prioritat` de la regla nova, igual que `CategoriesManager`) i `onChanged` (per refrescar l'estat global — categories/regles — de `App.tsx` en crear-se una regla, a banda de refrescar els seus propis moviments).
+- Sense canvis de backend (reutilitza rutes existents). `tsc -b`, `oxlint` i `vite build` nets; sense tests nous (la lògica de creació/aplicació de regles ja està coberta al backend i des de `CategoriesManager`).
+
+### 2026-07-08 — A la taula de Moviments, les cel·les de Saldo sense import mostren el saldo vigent (carry-forward)
+
+L'usuari va demanar que, a la pestanya de Moviments, totes les columnes de Saldo apareguin plenes a cada fila encara que aquell compte no hagi tingut cap moviment aquell dia — mostrant el darrer saldo conegut en lloc de deixar la cel·la buida (la columna d'Import, en canvi, es manté buida: no hi ha hagut cap moviment real).
+
+- `frontend/src/lib/balance.ts`: nova funció `creaConsultaSaldo(moviments, tipus)`, que retorna una funció `data -> saldo | null`. Precalcula un "punt de control" de saldo per cada data amb activitat d'un compte (reutilitzant la mateixa reconstrucció cronològica que ja feia servir `saldoEnData` internament) i després resol qualsevol data per cerca binària — molt més barat que cridar `saldoEnData` un cop per fila i per compte, ja que evitaria re-escanejar tot l'historial del compte a cada cel·la. Coherent amb `saldoEnData` per construcció (mateix algorisme de reconstrucció cronològica), i verificat amb tests que comparen totes dues funcions sobre el mateix conjunt de dates, incloent dates sense moviment.
+- `frontend/src/views/MovimentsList.tsx`: per cada compte seleccionat es construeix una d'aquestes consultes (memoritzada, a partir de tots els moviments del compte, no només els filtrats — el saldo mostrat ha de reflectir l'historial real, independentment dels filtres de data/categoria/text actius). A la cel·la de Saldo d'un compte sense moviment aquella fila, s'hi mostra ara el resultat d'aquesta consulta (en gris, per distingir-lo visualment d'un saldo real d'aquell dia); si encara no hi ha cap saldo conegut per aquell compte en aquella data (abans del seu primer moviment), la cel·la es manté buida.
+- Tests nous a `frontend/src/lib/balance.test.ts` (`creaConsultaSaldo`): 25 tests frontend (abans 22), `tsc -b` i `vite build` nets. Sense canvis de backend.
+
+### 2026-07-08 — Edició completa de comptes, ordre manual i agrupació per entitat
+
+L'usuari va demanar tres canvis a la configuració dels comptes: un camp per definir el seu ordre a la pestanya de Moviments, poder editar totes les dades de cada compte (no només l'àlies) i poder agrupar-los (p. ex. "Família", "Empresa").
+
+- `backend/src/db/migrations/002_comptes_ordre_grup.sql`: nova migració que afegeix `ordre INTEGER` i `grup TEXT` a `comptes`, i inicialitza `ordre` amb el `rowid` perquè els comptes existents no canviïn d'ordre visual en aplicar-la.
+- `backend/src/db/types.ts`: `Compte` incorpora `ordre?: number` i `grup?: string`.
+- `backend/src/db/operations.ts`:
+  - `listComptes()` ara ordena per `ordre` (nulls al final) i després per `alias` — aquest ordre es propaga a totes les pestanyes que fan servir la llista compartida de comptes des d'`App.tsx` (Moviments inclòs, via `CompteSelector`).
+  - `createCompte()` assigna automàticament el següent `ordre` disponible (`MAX(ordre)+1`) perquè els comptes nous sempre acabin al final sense que l'usuari l'hagi de fixar a mà.
+  - `renombraCompte()` (només canviava l'àlies) se substitueix per `actualitzaCompte()`, que permet editar qualsevol subconjunt de camps (àlies, banc, tipus, número, compte de liquidació, dia de liquidació, ordre, grup) en una sola crida; valida que `compteLiquidacioId` apunti a un compte existent i que `diaLiquidacio` estigui entre 1 i 31.
+  - `exportaCopiaSeguretat()`/`importaCopiaSeguretat()` inclouen ara `ordre` i `grup` a la còpia de seguretat JSON.
+- `backend/src/routes.ts`: `PATCH /comptes/:id` accepta ara tots els camps editables (abans només `alias`) i respon 400 si `actualitzaCompte()` llança un error de validació.
+- `frontend/src/api/types.ts` i `client.ts`: `Compte` amb `ordre`/`grup`; `renombraCompte()` se substitueix per `actualitzaCompte(compteId, data)`.
+- `frontend/src/views/AccountsManager.tsx`: reescrit — els comptes es mostren agrupats per `grup` (secció "(Sense grup)" sempre al final), cada fila té un botó "Edita" que desplega un formulari amb tots els camps (àlies, banc, tipus, número, grup amb autocompletar dels grups existents, ordre, i — només per a targetes — compte de liquidació i dia de liquidació).
+- Tests nous a `backend/src/db/operations.test.ts` (`actualitzaCompte`, ordre de `listComptes()`): 84 tests backend (abans 80), 22 frontend, `tsc -b` net a totes dues bandes.
 
 ### 2026-07-07 — Còpia de seguretat del `.db` a petició (a més de les automàtiques)
 

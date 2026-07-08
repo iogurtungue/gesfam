@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import {
+  actualitzaRegla,
   aplicaReglesAMovimentsSenseCategoria,
   createCategoria,
   createRegla,
@@ -24,6 +25,8 @@ export function CategoriesManager({ categories, regles, onChanged }: Props) {
   const [editant, setEditant] = useState<string | null>(null);
   const [nomEdicio, setNomEdicio] = useState('');
   const [errorRegla, setErrorRegla] = useState<string | null>(null);
+  const [editantRegla, setEditantRegla] = useState<string | null>(null);
+  const [edicioRegla, setEdicioRegla] = useState<{ patro: string; categoriaId: string } | null>(null);
 
   // `novaCategoriaRegla` només s'inicialitza un cop (useState); si la
   // categoria seleccionada desapareix (esborrada) o encara no n'hi ha cap
@@ -82,6 +85,30 @@ export function CategoriesManager({ categories, regles, onChanged }: Props) {
     onChanged();
   }
 
+  function iniciaEdicioRegla(r: ReglaCategoritzacio) {
+    setEditantRegla(r.id);
+    setEdicioRegla({ patro: r.patro, categoriaId: r.categoriaId });
+    setErrorRegla(null);
+  }
+
+  function cancelaEdicioRegla() {
+    setEditantRegla(null);
+    setEdicioRegla(null);
+    setErrorRegla(null);
+  }
+
+  async function desaEdicioRegla(id: string) {
+    if (!edicioRegla || !edicioRegla.patro.trim() || !edicioRegla.categoriaId) return;
+    setErrorRegla(null);
+    try {
+      await actualitzaRegla(id, { patro: edicioRegla.patro.trim(), categoriaId: edicioRegla.categoriaId });
+      cancelaEdicioRegla();
+      onChanged();
+    } catch (err) {
+      setErrorRegla((err as Error).message);
+    }
+  }
+
   async function handleAplicaRegles() {
     const n = await aplicaReglesAMovimentsSenseCategoria();
     setAplicantResultat(n);
@@ -89,6 +116,10 @@ export function CategoriesManager({ categories, regles, onChanged }: Props) {
   }
 
   const categoriaNom = (id: string) => categories.find((c) => c.id === id)?.nom ?? `⚠ categoria inexistent (${id})`;
+
+  const reglesOrdenades = [...regles].sort(
+    (a, b) => categoriaNom(a.categoriaId).localeCompare(categoriaNom(b.categoriaId)) || a.patro.localeCompare(b.patro),
+  );
 
   return (
     <section>
@@ -121,9 +152,32 @@ export function CategoriesManager({ categories, regles, onChanged }: Props) {
       <h3>Regles de categorització automàtica</h3>
       <p>Si el concepte conté el patró indicat, s'assigna la categoria automàticament en importar.</p>
       <ul>
-        {regles.map((r) => (
+        {reglesOrdenades.map((r) => (
           <li key={r.id}>
-            "{r.patro}" → {categoriaNom(r.categoriaId)} <button onClick={() => handleEsborraRegla(r.id)}>Esborra</button>
+            {editantRegla === r.id && edicioRegla ? (
+              <>
+                <select
+                  value={edicioRegla.categoriaId}
+                  onChange={(e) => setEdicioRegla({ ...edicioRegla, categoriaId: e.target.value })}
+                  autoFocus
+                >
+                  {categories.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.nom}
+                    </option>
+                  ))}
+                </select>{' '}
+                ←{' '}
+                <input value={edicioRegla.patro} onChange={(e) => setEdicioRegla({ ...edicioRegla, patro: e.target.value })} />{' '}
+                <button onClick={() => desaEdicioRegla(r.id)}>Desa</button>{' '}
+                <button onClick={cancelaEdicioRegla}>Cancel·la</button>
+              </>
+            ) : (
+              <>
+                {categoriaNom(r.categoriaId)} ← "{r.patro}" <button onClick={() => iniciaEdicioRegla(r)}>Edita</button>{' '}
+                <button onClick={() => handleEsborraRegla(r.id)}>Esborra</button>
+              </>
+            )}
           </li>
         ))}
       </ul>
