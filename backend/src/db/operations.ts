@@ -31,6 +31,8 @@ interface CompteRow {
   iban_o_ultims_digits: string | null;
   compte_liquidacio_id: string | null;
   dia_liquidacio: number | null;
+  ordre: number | null;
+  grup: string | null;
 }
 
 function rowToCompte(row: CompteRow): Compte {
@@ -42,6 +44,8 @@ function rowToCompte(row: CompteRow): Compte {
     ibanOUltimsDigits: row.iban_o_ultims_digits ?? undefined,
     compteLiquidacioId: row.compte_liquidacio_id ?? undefined,
     diaLiquidacio: row.dia_liquidacio ?? undefined,
+    ordre: row.ordre ?? undefined,
+    grup: row.grup ?? undefined,
   };
 }
 
@@ -119,21 +123,28 @@ function transaction<T>(db: DatabaseSync, fn: () => T): T {
 
 // --- Comptes ---
 
+/** Comptes sense `ordre` assignat (mai reordenats manualment) es mostren al final, per àlies. */
 export function listComptes(): Compte[] {
-  return (getDb().prepare('SELECT * FROM comptes').all() as unknown as CompteRow[]).map(rowToCompte);
+  return (
+    getDb().prepare('SELECT * FROM comptes ORDER BY ordre IS NULL, ordre, alias').all() as unknown as CompteRow[]
+  ).map(rowToCompte);
 }
 
 export function createCompte(data: { banc: BankId; tipus: AccountType; alias: string; numeroCompte?: string }): Compte {
+  const { seguentOrdre } = getDb().prepare('SELECT COALESCE(MAX(ordre), 0) + 1 AS seguentOrdre FROM comptes').get() as {
+    seguentOrdre: number;
+  };
   const compte: Compte = {
     id: randomUUID(),
     banc: data.banc,
     tipus: data.tipus,
     alias: data.alias,
     ibanOUltimsDigits: data.numeroCompte,
+    ordre: seguentOrdre,
   };
   getDb()
-    .prepare('INSERT INTO comptes (id, banc, tipus, alias, iban_o_ultims_digits) VALUES (?, ?, ?, ?, ?)')
-    .run(compte.id, compte.banc, compte.tipus, compte.alias, compte.ibanOUltimsDigits ?? null);
+    .prepare('INSERT INTO comptes (id, banc, tipus, alias, iban_o_ultims_digits, ordre) VALUES (?, ?, ?, ?, ?, ?)')
+    .run(compte.id, compte.banc, compte.tipus, compte.alias, compte.ibanOUltimsDigits ?? null, seguentOrdre);
   return compte;
 }
 
@@ -145,8 +156,49 @@ export function findMatchingCompte(banc: BankId, tipus: AccountType, numeroCompt
   return row ? rowToCompte(row) : undefined;
 }
 
-export function renombraCompte(compteId: string, alias: string): void {
-  getDb().prepare('UPDATE comptes SET alias = ? WHERE id = ?').run(alias, compteId);
+export interface ActualitzacioCompte {
+  alias?: string;
+  banc?: BankId;
+  tipus?: AccountType;
+  numeroCompte?: string | null;
+  compteLiquidacioId?: string | null;
+  diaLiquidacio?: number | null;
+  ordre?: number | null;
+  grup?: string | null;
+}
+
+const CAMPS_ACTUALITZACIO_COMPTE: [keyof ActualitzacioCompte, string][] = [
+  ['alias', 'alias'],
+  ['banc', 'banc'],
+  ['tipus', 'tipus'],
+  ['numeroCompte', 'iban_o_ultims_digits'],
+  ['compteLiquidacioId', 'compte_liquidacio_id'],
+  ['diaLiquidacio', 'dia_liquidacio'],
+  ['ordre', 'ordre'],
+  ['grup', 'grup'],
+];
+
+/** Edició de les dades d'un compte existent. Només toca els camps presents a `data`. */
+export function actualitzaCompte(compteId: string, data: ActualitzacioCompte): void {
+  if (data.compteLiquidacioId != null && !listComptes().some((c) => c.id === data.compteLiquidacioId)) {
+    throw new Error('El compte de liquidació indicat no existeix.');
+  }
+  if (data.diaLiquidacio != null && (data.diaLiquidacio < 1 || data.diaLiquidacio > 31)) {
+    throw new Error('El dia de liquidació ha de ser entre 1 i 31.');
+  }
+
+  const assignacions: string[] = [];
+  const valors: unknown[] = [];
+  for (const [camp, columna] of CAMPS_ACTUALITZACIO_COMPTE) {
+    if (data[camp] === undefined) continue;
+    assignacions.push(`${columna} = ?`);
+    valors.push(data[camp] ?? null);
+  }
+  if (assignacions.length === 0) return;
+  valors.push(compteId);
+  getDb()
+    .prepare(`UPDATE comptes SET ${assignacions.join(', ')} WHERE id = ?`)
+    .run(...(valors as (string | number | null)[]));
 }
 
 export function countMovimentsCompte(compteId: string): number {
@@ -330,6 +382,27 @@ export function deleteRegla(id: string): void {
   getDb().prepare('DELETE FROM regles WHERE id = ?').run(id);
 }
 
+export function actualitzaRegla(id: string, data: { patro?: string; categoriaId?: string }): void {
+  if (data.categoriaId !== undefined && !existeixCategoria(data.categoriaId)) {
+    throw new Error(`La categoria "${data.categoriaId}" no existeix.`);
+  }
+  const assignacions: string[] = [];
+  const valors: string[] = [];
+  if (data.patro !== undefined) {
+    assignacions.push('patro = ?');
+    valors.push(data.patro);
+  }
+  if (data.categoriaId !== undefined) {
+    assignacions.push('categoria_id = ?');
+    valors.push(data.categoriaId);
+  }
+  if (assignacions.length === 0) return;
+  valors.push(id);
+  getDb()
+    .prepare(`UPDATE regles SET ${assignacions.join(', ')} WHERE id = ?`)
+    .run(...valors);
+}
+
 export function setMovimentCategoria(movimentId: string, categoriaId: string | undefined): void {
   if (categoriaId !== undefined && !existeixCategoria(categoriaId)) {
     throw new Error(`La categoria "${categoriaId}" no existeix.`);
@@ -422,10 +495,20 @@ export function importaCopiaSeguretat(backup: Backup): void {
     db.exec('DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM categories; DELETE FROM comptes;');
 
     const insertCompte = db.prepare(
-      'INSERT INTO comptes (id, banc, tipus, alias, iban_o_ultims_digits, compte_liquidacio_id, dia_liquidacio) VALUES (?, ?, ?, ?, ?, ?, ?)',
+      'INSERT INTO comptes (id, banc, tipus, alias, iban_o_ultims_digits, compte_liquidacio_id, dia_liquidacio, ordre, grup) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)',
     );
     for (const c of backup.comptes) {
-      insertCompte.run(c.id, c.banc, c.tipus, c.alias, c.ibanOUltimsDigits ?? null, c.compteLiquidacioId ?? null, c.diaLiquidacio ?? null);
+      insertCompte.run(
+        c.id,
+        c.banc,
+        c.tipus,
+        c.alias,
+        c.ibanOUltimsDigits ?? null,
+        c.compteLiquidacioId ?? null,
+        c.diaLiquidacio ?? null,
+        c.ordre ?? null,
+        c.grup ?? null,
+      );
     }
 
     const insertCategoria = db.prepare('INSERT INTO categories (id, nom) VALUES (?, ?)');

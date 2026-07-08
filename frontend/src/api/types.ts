@@ -18,6 +18,8 @@ export interface Compte {
   ibanOUltimsDigits?: string;
   compteLiquidacioId?: string;
   diaLiquidacio?: number;
+  ordre?: number;
+  grup?: string;
 }
 
 export interface Moviment {

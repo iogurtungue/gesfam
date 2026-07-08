@@ -12,6 +12,10 @@ export interface Compte {
   compteLiquidacioId?: string;
   /** Only for targetes: dia del mes de càrrec de la liquidació. */
   diaLiquidacio?: number;
+  /** Ordre de visualització manual (p. ex. a la pestanya de Moviments). Comptes sense ordre es mostren al final, per àlies. */
+  ordre?: number;
+  /** Grup opcional per organitzar els comptes a la pestanya de Comptes (p. ex. "Família", "Empresa"). */
+  grup?: string;
 }
 
 export interface Moviment {

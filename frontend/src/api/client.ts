@@ -46,8 +46,19 @@ export async function findMatchingCompte(banc: BankId, tipus: AccountType, numer
   return comptes.find((c) => c.banc === banc && c.tipus === tipus && c.ibanOUltimsDigits === numeroCompte);
 }
 
-export function renombraCompte(compteId: string, alias: string): Promise<void> {
-  return req(`/comptes/${compteId}`, { method: 'PATCH', ...json({ alias }) });
+export interface ActualitzacioCompte {
+  alias?: string;
+  banc?: BankId;
+  tipus?: AccountType;
+  numeroCompte?: string | null;
+  compteLiquidacioId?: string | null;
+  diaLiquidacio?: number | null;
+  ordre?: number | null;
+  grup?: string | null;
+}
+
+export function actualitzaCompte(compteId: string, data: ActualitzacioCompte): Promise<void> {
+  return req(`/comptes/${compteId}`, { method: 'PATCH', ...json(data) });
 }
 
 export async function countMovimentsCompte(compteId: string): Promise<number> {
@@ -108,6 +119,10 @@ export function listRegles(): Promise<ReglaCategoritzacio[]> {
 
 export function createRegla(data: { patro: string; categoriaId: string; prioritat: number }): Promise<ReglaCategoritzacio> {
   return req('/regles', { method: 'POST', ...json(data) });
+}
+
+export function actualitzaRegla(id: string, data: { patro?: string; categoriaId?: string }): Promise<void> {
+  return req(`/regles/${id}`, { method: 'PATCH', ...json(data) });
 }
 
 export function deleteRegla(id: string): Promise<void> {

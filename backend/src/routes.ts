@@ -28,8 +28,13 @@ router.post('/comptes', (req, res) => {
 });
 
 router.patch('/comptes/:id', (req, res) => {
-  ops.renombraCompte(req.params.id, req.body.alias as string);
-  res.json({ ok: true });
+  const { alias, banc, tipus, numeroCompte, compteLiquidacioId, diaLiquidacio, ordre, grup } = req.body as ops.ActualitzacioCompte;
+  try {
+    ops.actualitzaCompte(req.params.id, { alias, banc, tipus, numeroCompte, compteLiquidacioId, diaLiquidacio, ordre, grup });
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 router.delete('/comptes/:id', (req, res) => {
@@ -99,6 +104,16 @@ router.post('/regles', (req, res) => {
   const { patro, categoriaId, prioritat } = req.body as { patro: string; categoriaId: string; prioritat: number };
   try {
     res.status(201).json(ops.createRegla({ patro, categoriaId, prioritat }));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+router.patch('/regles/:id', (req, res) => {
+  const { patro, categoriaId } = req.body as { patro?: string; categoriaId?: string };
+  try {
+    ops.actualitzaRegla(req.params.id, { patro, categoriaId });
+    res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }

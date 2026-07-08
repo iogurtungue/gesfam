@@ -4,6 +4,8 @@ import type { ParsedMoviment } from '../parsers/types.ts';
 process.env.GESFAM_DB_PATH = ':memory:';
 const { getDb } = await import('./client.ts');
 const {
+  actualitzaCompte,
+  actualitzaRegla,
   commitImport,
   countMovimentsCompte,
   createCategoria,
@@ -18,7 +20,6 @@ const {
   listRegles,
   reinicialitzaBaseDades,
   renombraCategoria,
-  renombraCompte,
   setMovimentCategoria,
 } = await import('./operations.ts');
 
@@ -85,6 +86,27 @@ describe('createRegla', () => {
   });
 });
 
+describe('actualitzaRegla', () => {
+  it('updates the patró and/or categoriaId of an existing rule', () => {
+    const categoriaA = createCategoria('Categoria A');
+    const categoriaB = createCategoria('Categoria B');
+    const regla = createRegla({ patro: 'ENDESA', categoriaId: categoriaA.id, prioritat: 0 });
+
+    actualitzaRegla(regla.id, { patro: 'IBERDROLA' });
+    expect(listRegles()[0]).toMatchObject({ patro: 'IBERDROLA', categoriaId: categoriaA.id });
+
+    actualitzaRegla(regla.id, { categoriaId: categoriaB.id });
+    expect(listRegles()[0]).toMatchObject({ patro: 'IBERDROLA', categoriaId: categoriaB.id });
+  });
+
+  it('refuses to point a rule at a category that does not exist', () => {
+    const categoria = createCategoria('Categoria');
+    const regla = createRegla({ patro: 'ENDESA', categoriaId: categoria.id, prioritat: 0 });
+    expect(() => actualitzaRegla(regla.id, { categoriaId: 'no-existeix' })).toThrow();
+    expect(listRegles()[0].categoriaId).toBe(categoria.id);
+  });
+});
+
 describe('setMovimentCategoria', () => {
   it('refuses to assign a category that does not exist', () => {
     const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Compte de prova' });
@@ -106,14 +128,44 @@ describe('renombraCategoria', () => {
   });
 });
 
-describe('renombraCompte', () => {
+describe('actualitzaCompte', () => {
   it('updates the alias without touching anything else', () => {
     const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Nom original' });
-    renombraCompte(compte.id, 'Nom nou');
+    actualitzaCompte(compte.id, { alias: 'Nom nou' });
     const [actualitzat] = listComptes();
     expect(actualitzat.alias).toBe('Nom nou');
     expect(actualitzat.id).toBe(compte.id);
     expect(actualitzat.banc).toBe('sabadell');
+  });
+
+  it('updates banc, tipus, ordre and grup together', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Compte' });
+    actualitzaCompte(compte.id, { banc: 'bbva', tipus: 'targeta', ordre: 5, grup: 'Família' });
+    const [actualitzat] = listComptes();
+    expect(actualitzat.banc).toBe('bbva');
+    expect(actualitzat.tipus).toBe('targeta');
+    expect(actualitzat.ordre).toBe(5);
+    expect(actualitzat.grup).toBe('Família');
+  });
+
+  it('refuses a compteLiquidacioId that does not point to an existing account', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    expect(() => actualitzaCompte(compte.id, { compteLiquidacioId: 'no-existeix' })).toThrow();
+  });
+
+  it('refuses a diaLiquidacio outside 1-31', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    expect(() => actualitzaCompte(compte.id, { diaLiquidacio: 32 })).toThrow();
+  });
+});
+
+describe('listComptes', () => {
+  it('orders accounts by ordre, then falls back to alias for accounts without one', () => {
+    const b = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'B' });
+    const a = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'A' });
+    actualitzaCompte(a.id, { ordre: 1 });
+    actualitzaCompte(b.id, { ordre: 0 });
+    expect(listComptes().map((c) => c.alias)).toEqual(['B', 'A']);
   });
 });
 
