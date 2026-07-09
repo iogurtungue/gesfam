@@ -48,3 +48,17 @@ export function computeMovimentHash(input: MovimentHashInput): string {
   ].join('|');
   return cyrb53(key);
 }
+
+/**
+ * Deterministic id for the synthetic counterpart movement created on a
+ * card's account when a checking-account movement is marked as that card's
+ * monthly settlement (especificacio.md 3.2.1). Same input, same id — so
+ * re-marking after a reimport (which reassigns the same movement hash to
+ * the settlement charge, per computeMovimentHash) reproduces the exact same
+ * counterpart instead of creating a duplicate. A distinct seed keeps this
+ * id-space separate from computeMovimentHash's (seed 0), even though the
+ * key material itself already differs (a fixed prefix, not movement fields).
+ */
+export function computeContrapartidaId(movimentOrigenId: string): string {
+  return cyrb53(`contrapartida-liquidacio-targeta:${movimentOrigenId}`, 1);
+}

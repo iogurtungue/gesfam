@@ -38,6 +38,10 @@ export interface Moviment {
    * per data (IndexedDB no garanteix retornar les files en ordre d'inserció).
    */
   seq: number;
+  /** Si aquest moviment (d'un compte corrent) és el càrrec de liquidació mensual d'una targeta, l'id d'aquesta targeta (especificacio.md 3.2.1). */
+  esLiquidacioTargetaId?: string;
+  /** Si aquest moviment és la contrapartida virtual generada per a una liquidació de targeta, l'id del moviment real (compte corrent) que la va originar. */
+  movimentOrigenId?: string;
 }
 
 export interface LotImportacio {
@@ -61,4 +65,12 @@ export interface ReglaCategoritzacio {
   categoriaId: string;
   /** Ordre d'aplicació: la primera regla que coincideix (per prioritat ascendent) guanya. */
   prioritat: number;
+}
+
+/** Detecta automàticament, pel concepte d'un càrrec del compte corrent, a quina targeta correspon la seva liquidació mensual (especificacio.md 3.2.1). */
+export interface ReglaLiquidacioTargeta {
+  id: string;
+  /** Subcadena a buscar dins el concepte normalitzat (comparació insensible a majúscules). */
+  patro: string;
+  targetaCompteId: string;
 }

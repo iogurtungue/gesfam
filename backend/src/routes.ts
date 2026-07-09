@@ -139,6 +139,45 @@ router.post('/transferencies/confirma', (req, res) => {
   res.json({ ok: true });
 });
 
+// --- Liquidacions de targeta ---
+
+router.get('/liquidacions/regles', (_req, res) => {
+  res.json(ops.listReglesLiquidacio());
+});
+
+router.post('/liquidacions/regles', (req, res) => {
+  const { patro, targetaCompteId } = req.body as { patro: string; targetaCompteId: string };
+  try {
+    res.status(201).json(ops.createReglaLiquidacio({ patro, targetaCompteId }));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+router.delete('/liquidacions/regles/:id', (req, res) => {
+  ops.deleteReglaLiquidacio(req.params.id);
+  res.json({ ok: true });
+});
+
+router.get('/liquidacions/suggeriments', (_req, res) => {
+  res.json(ops.suggereixLiquidacionsTargeta());
+});
+
+router.post('/liquidacions/marca', (req, res) => {
+  const { movimentId, targetaCompteId } = req.body as { movimentId: string; targetaCompteId: string };
+  try {
+    res.json(ops.marcaLiquidacioTargeta(movimentId, targetaCompteId));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+router.post('/liquidacions/desmarca', (req, res) => {
+  const { movimentId } = req.body as { movimentId: string };
+  ops.desmarcaLiquidacioTargeta(movimentId);
+  res.json({ ok: true });
+});
+
 // --- Còpia de seguretat ---
 
 router.get('/backup', (_req, res) => {

@@ -11,20 +11,29 @@ const {
   createCategoria,
   createCompte,
   createRegla,
+  createReglaLiquidacio,
+  deleteReglaLiquidacio,
+  desmarcaLiquidacioTargeta,
   eliminaCompte,
   eliminaTotsElsMoviments,
   listCategories,
   listComptes,
   listLots,
   listMovimentsPerComptes,
+  listReglesLiquidacio,
   listRegles,
+  marcaLiquidacioTargeta,
   reinicialitzaBaseDades,
   renombraCategoria,
   setMovimentCategoria,
+  suggereixLiquidacionsTargeta,
+  undoLot,
 } = await import('./operations.ts');
 
 beforeEach(() => {
-  getDb().exec('DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM categories; DELETE FROM comptes;');
+  getDb().exec(
+    'DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM categories; DELETE FROM comptes;',
+  );
 });
 
 function mov(dataOperacio: string, concepteOriginal: string, importCents: number): ParsedMoviment {
@@ -220,6 +229,147 @@ describe('eliminaTotsElsMoviments', () => {
     const { nous, duplicats } = commitImport(compte, [moviment], 'test.txt');
     expect(nous).toBe(1);
     expect(duplicats).toBe(0);
+  });
+});
+
+describe('liquidacions de targeta (especificacio.md 3.2.1)', () => {
+  it('createReglaLiquidacio refuses a targetaCompteId that is not a targeta account', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    expect(() => createReglaLiquidacio({ patro: 'LIQUIDACION', targetaCompteId: corrent.id })).toThrow();
+    expect(listReglesLiquidacio()).toEqual([]);
+  });
+
+  it('deleteReglaLiquidacio removes a rule', () => {
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    const regla = createReglaLiquidacio({ patro: 'LIQUIDACION', targetaCompteId: targeta.id });
+    deleteReglaLiquidacio(regla.id);
+    expect(listReglesLiquidacio()).toEqual([]);
+  });
+
+  it('suggereixLiquidacionsTargeta proposes unmarked corrent charges matching a configured pattern', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    createReglaLiquidacio({ patro: 'LIQUIDACION TARJETA', targetaCompteId: targeta.id });
+    commitImport(corrent, [mov('2026-06-05', 'LIQUIDACION TARJETA VISA', -11000)], 'extracte.txt');
+    commitImport(corrent, [mov('2026-06-06', 'SUPERMERCAT', -3000)], 'extracte2.txt');
+
+    const suggeriments = suggereixLiquidacionsTargeta();
+    expect(suggeriments).toHaveLength(1);
+    expect(suggeriments[0].targetaCompteId).toBe(targeta.id);
+    expect(suggeriments[0].moviment.concepteOriginal).toBe('LIQUIDACION TARJETA VISA');
+  });
+
+  it('marcaLiquidacioTargeta creates a positive counterpart on the card, marks both sides as internal transfers, and reports a perfectly-squared quadratura', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    commitImport(targeta, [mov('2026-06-01', 'BON AREA', -6000), mov('2026-06-02', 'BENZINERA', -5000)], 'targeta.txt');
+    commitImport(corrent, [mov('2026-06-05', 'LIQUIDACION TARJETA', -11000)], 'corrent.txt');
+
+    const [carrec] = listMovimentsPerComptes([corrent.id]);
+    const { contrapartida, quadratura } = marcaLiquidacioTargeta(carrec.id, targeta.id);
+
+    expect(contrapartida.compteId).toBe(targeta.id);
+    expect(contrapartida.importCents).toBe(11000);
+    expect(contrapartida.dataOperacio).toBe('2026-06-05');
+    expect(contrapartida.concepteOriginal).toBe('Liquidació rebuda (contrapartida automàtica)');
+    expect(contrapartida.esTransferenciaInterna).toBe(true);
+    expect(contrapartida.movimentOrigenId).toBe(carrec.id);
+    expect(quadratura).toEqual({ esperatCents: 11000, obtingutCents: 11000, diferenciaCents: 0 });
+
+    const [carrecActualitzat] = listMovimentsPerComptes([corrent.id]);
+    expect(carrecActualitzat.esLiquidacioTargetaId).toBe(targeta.id);
+    expect(carrecActualitzat.esTransferenciaInterna).toBe(true);
+
+    // El deute de la targeta (suma d'import_cents, veure balance.ts) torna a 0 després de la liquidació.
+    const targetaMoviments = listMovimentsPerComptes([targeta.id]);
+    expect(targetaMoviments.reduce((s, m) => s + m.importCents, 0)).toBe(0);
+  });
+
+  it('reports a non-zero diferenciaCents when the settlement does not match the card movements', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    commitImport(targeta, [mov('2026-06-01', 'BON AREA', -6000)], 'targeta.txt');
+    commitImport(corrent, [mov('2026-06-05', 'LIQUIDACION TARJETA', -6500)], 'corrent.txt');
+
+    const [carrec] = listMovimentsPerComptes([corrent.id]);
+    const { quadratura } = marcaLiquidacioTargeta(carrec.id, targeta.id);
+    expect(quadratura).toEqual({ esperatCents: 6000, obtingutCents: 6500, diferenciaCents: 500 });
+  });
+
+  it('only counts card movements since the previous settlement when computing quadratura', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    commitImport(targeta, [mov('2026-05-01', 'COMPRA MAIG', -1000)], 'targeta-maig.txt');
+    commitImport(corrent, [mov('2026-05-05', 'LIQUIDACION TARJETA', -1000)], 'corrent-maig.txt');
+    const carrecMaig = listMovimentsPerComptes([corrent.id]).find((m) => m.dataOperacio === '2026-05-05')!;
+    marcaLiquidacioTargeta(carrecMaig.id, targeta.id);
+
+    commitImport(targeta, [mov('2026-06-01', 'COMPRA JUNY', -2000)], 'targeta-juny.txt');
+    commitImport(corrent, [mov('2026-06-05', 'LIQUIDACION TARJETA', -2000)], 'corrent-juny.txt');
+    const carrecJuny = listMovimentsPerComptes([corrent.id]).find((m) => m.dataOperacio === '2026-06-05')!;
+    const { quadratura } = marcaLiquidacioTargeta(carrecJuny.id, targeta.id);
+
+    expect(quadratura).toEqual({ esperatCents: 2000, obtingutCents: 2000, diferenciaCents: 0 });
+  });
+
+  it('produces the exact same counterpart id when re-marking the same charge (idempotent, e.g. after a reimport)', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    commitImport(corrent, [mov('2026-06-05', 'LIQUIDACION TARJETA', -1000)], 'corrent.txt');
+    const [carrec] = listMovimentsPerComptes([corrent.id]);
+
+    const primer = marcaLiquidacioTargeta(carrec.id, targeta.id);
+    const segon = marcaLiquidacioTargeta(carrec.id, targeta.id);
+
+    expect(segon.contrapartida.id).toBe(primer.contrapartida.id);
+    expect(listMovimentsPerComptes([targeta.id])).toHaveLength(1);
+  });
+
+  it('refuses to mark a movement from a targeta account as a settlement', () => {
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    commitImport(targeta, [mov('2026-06-01', 'BON AREA', -1000)], 'targeta.txt');
+    const [movimentTargeta] = listMovimentsPerComptes([targeta.id]);
+    expect(() => marcaLiquidacioTargeta(movimentTargeta.id, targeta.id)).toThrow();
+  });
+
+  it('desmarcaLiquidacioTargeta removes the counterpart and clears the marker', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    commitImport(corrent, [mov('2026-06-05', 'LIQUIDACION', -1000)], 'corrent.txt');
+    const [carrec] = listMovimentsPerComptes([corrent.id]);
+    marcaLiquidacioTargeta(carrec.id, targeta.id);
+    expect(listMovimentsPerComptes([targeta.id])).toHaveLength(1);
+
+    desmarcaLiquidacioTargeta(carrec.id);
+
+    expect(listMovimentsPerComptes([targeta.id])).toHaveLength(0);
+    const [carrecDesmarcat] = listMovimentsPerComptes([corrent.id]);
+    expect(carrecDesmarcat.esLiquidacioTargetaId).toBeUndefined();
+    expect(carrecDesmarcat.esTransferenciaInterna).toBe(false);
+  });
+
+  it('undoing the lot of the marked charge also removes its counterpart on the card (shares lotImportacioId)', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    const { lot } = commitImport(corrent, [mov('2026-06-05', 'LIQUIDACION', -1000)], 'corrent.txt');
+    const [carrec] = listMovimentsPerComptes([corrent.id]);
+    marcaLiquidacioTargeta(carrec.id, targeta.id);
+    expect(listMovimentsPerComptes([targeta.id])).toHaveLength(1);
+
+    undoLot(lot.id);
+
+    expect(listMovimentsPerComptes([corrent.id])).toHaveLength(0);
+    expect(listMovimentsPerComptes([targeta.id])).toHaveLength(0);
+    expect(listLots()).toHaveLength(0);
+  });
+
+  it('eliminaCompte cascades to any regla_liquidacio pointing at the deleted targeta account', () => {
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    createReglaLiquidacio({ patro: 'LIQUIDACION', targetaCompteId: targeta.id });
+
+    eliminaCompte(targeta.id);
+
+    expect(listReglesLiquidacio()).toEqual([]);
   });
 });
 

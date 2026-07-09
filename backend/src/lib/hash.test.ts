@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computeMovimentHash, type MovimentHashInput } from './hash';
+import { computeContrapartidaId, computeMovimentHash, type MovimentHashInput } from './hash';
 
 const base: MovimentHashInput = {
   banc: 'sabadell',
@@ -31,5 +31,19 @@ describe('computeMovimentHash', () => {
 
   it('differs across accounts even with identical movement data', () => {
     expect(computeMovimentHash(base)).not.toBe(computeMovimentHash({ ...base, compteId: 'compte-2' }));
+  });
+});
+
+describe('computeContrapartidaId', () => {
+  it('is deterministic for the same origin movement id (idempotent across re-marking/reimports)', () => {
+    expect(computeContrapartidaId('moviment-1')).toBe(computeContrapartidaId('moviment-1'));
+  });
+
+  it('differs across origin movement ids', () => {
+    expect(computeContrapartidaId('moviment-1')).not.toBe(computeContrapartidaId('moviment-2'));
+  });
+
+  it('never collides with a real movement hash of the same origin id (distinct id spaces)', () => {
+    expect(computeContrapartidaId('moviment-1')).not.toBe(computeMovimentHash({ ...base, compteId: 'moviment-1' }));
   });
 });
