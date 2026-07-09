@@ -12,7 +12,10 @@ import type {
   Moviment,
   ParsedMoviment,
   ReglaCategoritzacio,
+  ReglaLiquidacioTargeta,
+  ResultatMarcaLiquidacio,
   SuggerimentAmbDetall,
+  SuggerimentLiquidacio,
   SuggerimentTransferencia,
 } from './types';
 
@@ -142,6 +145,32 @@ export function suggereixTransferencies(): Promise<SuggerimentAmbDetall[]> {
 
 export function confirmaTransferencia(suggeriment: SuggerimentTransferencia): Promise<void> {
   return req('/transferencies/confirma', { method: 'POST', ...json(suggeriment) });
+}
+
+// --- Liquidacions de targeta (especificacio.md 3.2.1) ---
+
+export function listReglesLiquidacio(): Promise<ReglaLiquidacioTargeta[]> {
+  return req('/liquidacions/regles');
+}
+
+export function createReglaLiquidacio(data: { patro: string; targetaCompteId: string }): Promise<ReglaLiquidacioTargeta> {
+  return req('/liquidacions/regles', { method: 'POST', ...json(data) });
+}
+
+export function deleteReglaLiquidacio(id: string): Promise<void> {
+  return req(`/liquidacions/regles/${id}`, { method: 'DELETE' });
+}
+
+export function suggereixLiquidacionsTargeta(): Promise<SuggerimentLiquidacio[]> {
+  return req('/liquidacions/suggeriments');
+}
+
+export function marcaLiquidacioTargeta(movimentId: string, targetaCompteId: string): Promise<ResultatMarcaLiquidacio> {
+  return req('/liquidacions/marca', { method: 'POST', ...json({ movimentId, targetaCompteId }) });
+}
+
+export function desmarcaLiquidacioTargeta(movimentId: string): Promise<void> {
+  return req('/liquidacions/desmarca', { method: 'POST', ...json({ movimentId }) });
 }
 
 // --- Còpia de seguretat ---

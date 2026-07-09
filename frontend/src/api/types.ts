@@ -35,6 +35,10 @@ export interface Moviment {
   lotImportacioId: string;
   esTransferenciaInterna?: boolean;
   seq: number;
+  /** Si aquest moviment (d'un compte corrent) és el càrrec de liquidació mensual d'una targeta, l'id d'aquesta targeta. */
+  esLiquidacioTargetaId?: string;
+  /** Si aquest moviment és la contrapartida virtual generada per a una liquidació de targeta, l'id del moviment real que la va originar. */
+  movimentOrigenId?: string;
 }
 
 export interface LotImportacio {
@@ -56,6 +60,29 @@ export interface ReglaCategoritzacio {
   patro: string;
   categoriaId: string;
   prioritat: number;
+}
+
+/** Detecta automàticament, pel concepte d'un càrrec del compte corrent, a quina targeta correspon la seva liquidació mensual. */
+export interface ReglaLiquidacioTargeta {
+  id: string;
+  patro: string;
+  targetaCompteId: string;
+}
+
+export interface SuggerimentLiquidacio {
+  moviment: Moviment;
+  targetaCompteId: string;
+}
+
+export interface QuadraturaLiquidacio {
+  esperatCents: number;
+  obtingutCents: number;
+  diferenciaCents: number;
+}
+
+export interface ResultatMarcaLiquidacio {
+  contrapartida: Moviment;
+  quadratura: QuadraturaLiquidacio;
 }
 
 export interface ParsedMoviment {
@@ -115,6 +142,7 @@ export interface Backup {
   lots: LotImportacio[];
   categories: Categoria[];
   regles: ReglaCategoritzacio[];
+  reglesLiquidacio: ReglaLiquidacioTargeta[];
 }
 
 export interface CommitImportResult {

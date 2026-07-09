@@ -6,12 +6,15 @@ import {
   aplicaReglesAMovimentsSenseCategoria,
   confirmaTransferencia,
   createRegla,
+  desmarcaLiquidacioTargeta,
   listMovimentsPerComptes,
+  marcaLiquidacioTargeta,
   setMovimentCategoria,
   setTransferenciaInterna,
+  suggereixLiquidacionsTargeta,
   suggereixTransferencies,
 } from '../api/client';
-import type { Categoria, Compte, Moviment, ReglaCategoritzacio, SuggerimentAmbDetall } from '../api/types';
+import type { Categoria, Compte, Moviment, ReglaCategoritzacio, SuggerimentAmbDetall, SuggerimentLiquidacio } from '../api/types';
 
 type FiltreTipus = 'tots' | 'ingres' | 'carrec';
 type CampOrdre = 'dataOperacio' | 'concepteOriginal';
@@ -23,6 +26,7 @@ interface FormRegla {
 
 interface Props {
   seleccionats: Compte[];
+  totsElsComptes: Compte[];
   categories: Categoria[];
   regles: ReglaCategoritzacio[];
   onChanged: () => void;
@@ -33,7 +37,7 @@ function csvField(value: string): string {
   return value;
 }
 
-export function MovimentsList({ seleccionats, categories, regles, onChanged }: Props) {
+export function MovimentsList({ seleccionats, totsElsComptes, categories, regles, onChanged }: Props) {
   const [moviments, setMoviments] = useState<Moviment[]>([]);
   const [dataDes, setDataDes] = useState('');
   const [dataFins, setDataFins] = useState('');
@@ -45,6 +49,10 @@ export function MovimentsList({ seleccionats, categories, regles, onChanged }: P
   const [reglaObertaPer, setReglaObertaPer] = useState<string | null>(null);
   const [formRegla, setFormRegla] = useState<FormRegla | null>(null);
   const [errorRegla, setErrorRegla] = useState<string | null>(null);
+  const [suggerimentsLiquidacio, setSuggerimentsLiquidacio] = useState<SuggerimentLiquidacio[]>([]);
+  const [seleccioLiquidacio, setSeleccioLiquidacio] = useState<Record<string, string>>({});
+  const [avisQuadratura, setAvisQuadratura] = useState<string | null>(null);
+  const [errorLiquidacio, setErrorLiquidacio] = useState<string | null>(null);
 
   const compteIds = seleccionats.map((c) => c.id).join(',');
   const compteAlias = useMemo(() => {
@@ -55,6 +63,8 @@ export function MovimentsList({ seleccionats, categories, regles, onChanged }: P
     const map = new Map(categories.map((c) => [c.id, c.nom]));
     return (categoriaId?: string) => (categoriaId ? (map.get(categoriaId) ?? '') : '');
   }, [categories]);
+  const compteById = useMemo(() => new Map(totsElsComptes.map((c) => [c.id, c])), [totsElsComptes]);
+  const targetes = useMemo(() => totsElsComptes.filter((c) => c.tipus === 'targeta'), [totsElsComptes]);
 
   // Per a cada compte, una funció data -> saldo conegut en aquella data (o
   // l'anterior més recent), perquè les cel·les de Saldo d'un compte sense
@@ -71,6 +81,7 @@ export function MovimentsList({ seleccionats, categories, regles, onChanged }: P
   function refresh() {
     listMovimentsPerComptes(seleccionats.map((c) => c.id)).then(setMoviments);
     suggereixTransferencies().then(setSuggeriments);
+    suggereixLiquidacionsTargeta().then(setSuggerimentsLiquidacio);
   }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -165,6 +176,73 @@ export function MovimentsList({ seleccionats, categories, regles, onChanged }: P
     }
   }
 
+  async function handleMarcaLiquidacio(movimentId: string, targetaCompteId: string) {
+    if (!targetaCompteId) return;
+    setErrorLiquidacio(null);
+    setAvisQuadratura(null);
+    try {
+      const { quadratura } = await marcaLiquidacioTargeta(movimentId, targetaCompteId);
+      if (quadratura.diferenciaCents !== 0) {
+        const signe = quadratura.diferenciaCents > 0 ? 'més' : 'menys';
+        setAvisQuadratura(
+          `La liquidació (${centsToEs(quadratura.obtingutCents, false)}) no quadra amb els moviments de la targeta des de ` +
+            `l'anterior liquidació (${centsToEs(quadratura.esperatCents, false)}): ${centsToEs(Math.abs(quadratura.diferenciaCents), false)} ${signe}.`,
+        );
+      }
+      setSuggerimentsLiquidacio((prev) => prev.filter((s) => s.moviment.id !== movimentId));
+      refresh();
+    } catch (err) {
+      setErrorLiquidacio((err as Error).message);
+    }
+  }
+
+  async function handleDesmarcaLiquidacio(movimentId: string) {
+    setErrorLiquidacio(null);
+    try {
+      await desmarcaLiquidacioTargeta(movimentId);
+      refresh();
+    } catch (err) {
+      setErrorLiquidacio((err as Error).message);
+    }
+  }
+
+  /** Contingut de la columna "Liquidació" (especificacio.md 3.2.1): marcar/desmarcar un càrrec del compte corrent com la liquidació d'una targeta. No aplicable a moviments de targeta ni a les seves contrapartides automàtiques. */
+  function cellaLiquidacio(m: Moviment) {
+    if (m.movimentOrigenId) {
+      return <span title="Contrapartida automàtica d'una liquidació de targeta">contrapartida</span>;
+    }
+    if (compteById.get(m.compteId)?.tipus !== 'corrent') return null;
+    if (m.esLiquidacioTargetaId) {
+      return (
+        <>
+          {compteById.get(m.esLiquidacioTargetaId)?.alias ?? m.esLiquidacioTargetaId}{' '}
+          <button onClick={() => handleDesmarcaLiquidacio(m.id)} title="Desmarca la liquidació">
+            D
+          </button>
+        </>
+      );
+    }
+    const seleccionada = seleccioLiquidacio[m.id] ?? targetes[0]?.id ?? '';
+    return (
+      <>
+        <select
+          value={seleccionada}
+          onChange={(e) => setSeleccioLiquidacio({ ...seleccioLiquidacio, [m.id]: e.target.value })}
+          style={{ width: 90, fontSize: 12 }}
+        >
+          {targetes.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.alias}
+            </option>
+          ))}
+        </select>{' '}
+        <button onClick={() => handleMarcaLiquidacio(m.id, seleccionada)} title="Marca liquidació">
+          M
+        </button>
+      </>
+    );
+  }
+
   return (
     <section>
       <h2>Moviments</h2>
@@ -185,6 +263,29 @@ export function MovimentsList({ seleccionats, categories, regles, onChanged }: P
           </ul>
         </div>
       )}
+
+      {suggerimentsLiquidacio.length > 0 && (
+        <div style={{ border: '1px solid #d90', padding: 8, marginBottom: 12, fontSize: 12 }}>
+          <strong>Liquidacions de targeta suggerides</strong>
+          <ul>
+            {suggerimentsLiquidacio.map((s) => (
+              <li key={s.moviment.id}>
+                {formatDateEs(s.moviment.dataOperacio)} — {s.moviment.concepteOriginal} (
+                <span style={colorImport(s.moviment.importCents)}>{centsToEs(s.moviment.importCents, false)}</span>) → liquidació de{' '}
+                {compteById.get(s.targetaCompteId)?.alias ?? s.targetaCompteId}{' '}
+                <button onClick={() => handleMarcaLiquidacio(s.moviment.id, s.targetaCompteId)}>Confirmar</button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {avisQuadratura && (
+        <p style={{ color: '#d90' }}>
+          ⚠ {avisQuadratura} <button onClick={() => setAvisQuadratura(null)}>D'acord</button>
+        </p>
+      )}
+      {errorLiquidacio && <p style={{ color: '#c00' }}>{errorLiquidacio}</p>}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <label>
@@ -239,6 +340,11 @@ export function MovimentsList({ seleccionats, categories, regles, onChanged }: P
               <th style={{ ...cellStyle, ...cellTI }} rowSpan={2}>
                 TI
               </th>
+              {targetes.length > 0 && (
+                <th style={{ ...cellStyle, ...cellLiquidacio }} rowSpan={2}>
+                  Liquidació
+                </th>
+              )}
               {seleccionats.map((c) => (
                 <th key={c.id} style={cellStyle} colSpan={2}>
                   {c.alias}
@@ -291,6 +397,7 @@ export function MovimentsList({ seleccionats, categories, regles, onChanged }: P
                       onChange={(e) => handleTransferenciaChange(m.id, e.target.checked)}
                     />
                   </td>
+                  {targetes.length > 0 && <td style={{ ...cellStyle, ...cellLiquidacio }}>{cellaLiquidacio(m)}</td>}
                   {seleccionats.map((c) => {
                     if (c.id === m.compteId) {
                       return (
@@ -317,7 +424,7 @@ export function MovimentsList({ seleccionats, categories, regles, onChanged }: P
                 </tr>
                 {reglaObertaPer === m.id && formRegla && (
                   <tr>
-                    <td colSpan={4 + seleccionats.length * 2} style={{ ...cellStyle, background: '#f7f7f7' }}>
+                    <td colSpan={(targetes.length > 0 ? 5 : 4) + seleccionats.length * 2} style={{ ...cellStyle, background: '#f7f7f7' }}>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                         <strong>Nova regla:</strong>
                         <label>
@@ -380,5 +487,7 @@ const cellConcepte: React.CSSProperties = { whiteSpace: 'normal', overflowWrap: 
 const cellCategoria: React.CSSProperties = amplaFixa(162);
 // La més estreta possible: només cal encabir-hi la casella de selecció.
 const cellTI: React.CSSProperties = { ...amplaFixa(28), textAlign: 'center', padding: '2px 4px' };
+// Encabeix el selector de targeta (90px) + el botó "M"/"D" d'una lletra.
+const cellLiquidacio: React.CSSProperties = amplaFixa(130);
 // P.ex. "-12.345,67" és un import/saldo raonablement gran per a un ús personal.
 const cellNumeric: React.CSSProperties = { ...amplaFixa(80), textAlign: 'right', fontVariantNumeric: 'tabular-nums' };

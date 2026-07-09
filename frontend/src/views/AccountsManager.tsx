@@ -1,7 +1,14 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { bankLabel } from '../lib/bankLabel';
-import { actualitzaCompte, countMovimentsCompte, eliminaCompte } from '../api/client';
-import type { AccountType, BankId, Compte } from '../api/types';
+import {
+  actualitzaCompte,
+  countMovimentsCompte,
+  createReglaLiquidacio,
+  deleteReglaLiquidacio,
+  eliminaCompte,
+  listReglesLiquidacio,
+} from '../api/client';
+import type { AccountType, BankId, Compte, ReglaLiquidacioTargeta } from '../api/types';
 
 interface Props {
   comptes: Compte[];
@@ -33,6 +40,83 @@ function formInicial(c: Compte): FormEdicio {
     compteLiquidacioId: c.compteLiquidacioId ?? '',
     diaLiquidacio: c.diaLiquidacio !== undefined ? String(c.diaLiquidacio) : '',
   };
+}
+
+/**
+ * Regles per detectar automàticament, pel concepte del càrrec al compte
+ * corrent, a quina targeta correspon la seva liquidació mensual
+ * (especificacio.md 3.2.1) — les propostes es confirmen a la pestanya de
+ * Moviments, aquí només es configuren els patrons.
+ */
+function ReglesLiquidacioTargeta({ comptes }: { comptes: Compte[] }) {
+  const [regles, setRegles] = useState<ReglaLiquidacioTargeta[]>([]);
+  const [nouPatro, setNouPatro] = useState('');
+  const [targetaId, setTargetaId] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  const targetes = useMemo(() => comptes.filter((c) => c.tipus === 'targeta'), [comptes]);
+
+  function carrega() {
+    listReglesLiquidacio().then(setRegles);
+  }
+
+  useEffect(carrega, []);
+
+  useEffect(() => {
+    if (targetes.length === 0) return;
+    if (!targetes.some((t) => t.id === targetaId)) setTargetaId(targetes[0].id);
+  }, [targetes, targetaId]);
+
+  const aliasTargeta = (id: string) => comptes.find((c) => c.id === id)?.alias ?? `⚠ compte inexistent (${id})`;
+
+  async function handleAfegeix(e: React.FormEvent) {
+    e.preventDefault();
+    if (!nouPatro.trim() || !targetaId) return;
+    setError(null);
+    try {
+      await createReglaLiquidacio({ patro: nouPatro.trim(), targetaCompteId: targetaId });
+      setNouPatro('');
+      carrega();
+    } catch (err) {
+      setError((err as Error).message);
+    }
+  }
+
+  async function handleEsborra(id: string) {
+    await deleteReglaLiquidacio(id);
+    carrega();
+  }
+
+  if (targetes.length === 0) return null;
+
+  return (
+    <div style={{ border: '1px solid #999', padding: 12, marginBottom: 16 }}>
+      <h3>Regles de liquidació de targeta</h3>
+      <p>
+        Si el concepte d'un càrrec del compte corrent conté el patró indicat, es proposa (a la pestanya de Moviments, amb
+        confirmació) com la liquidació mensual de la targeta indicada.
+      </p>
+      <ul>
+        {regles.map((r) => (
+          <li key={r.id}>
+            {aliasTargeta(r.targetaCompteId)} ← "{r.patro}" <button onClick={() => handleEsborra(r.id)}>Esborra</button>
+          </li>
+        ))}
+      </ul>
+      {error && <p style={{ color: '#c00' }}>{error}</p>}
+      <form onSubmit={handleAfegeix}>
+        <input value={nouPatro} onChange={(e) => setNouPatro(e.target.value)} placeholder="p.ex. LIQUIDACION TARJETA" />
+        <select value={targetaId} onChange={(e) => setTargetaId(e.target.value)}>
+          {targetes.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.alias}
+            </option>
+          ))}
+        </select>
+        <button type="submit">Afegeix regla</button>
+      </form>
+    </div>
+  );
 }
 
 /** Gestió de comptes: editar totes les dades, agrupar-los (p. ex. Família/Empresa) i eliminar comptes sense moviments associats. */
@@ -272,6 +356,8 @@ export function AccountsManager({ comptes, onChanged }: Props) {
           <option key={g} value={g} />
         ))}
       </datalist>
+
+      <ReglesLiquidacioTargeta comptes={comptes} />
     </section>
   );
 }

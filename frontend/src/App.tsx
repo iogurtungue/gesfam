@@ -78,7 +78,13 @@ function App() {
 
       {pestanya === 'panell' && <Dashboard seleccionats={seleccio.seleccionats} />}
       {pestanya === 'moviments' && (
-        <MovimentsList seleccionats={seleccio.seleccionats} categories={categories} regles={regles} onChanged={refresh} />
+        <MovimentsList
+          seleccionats={seleccio.seleccionats}
+          totsElsComptes={comptes}
+          categories={categories}
+          regles={regles}
+          onChanged={refresh}
+        />
       )}
       {pestanya === 'resum' && <Summary seleccionats={seleccio.seleccionats} categories={categories} />}
       {pestanya === 'categories' && <CategoriesManager categories={categories} regles={regles} onChanged={refresh} />}
