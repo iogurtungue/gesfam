@@ -178,6 +178,56 @@ router.post('/liquidacions/desmarca', (req, res) => {
   res.json({ ok: true });
 });
 
+// --- Liquidacions directes de targeta ---
+
+router.get('/liquidacions-directes/regles', (_req, res) => {
+  res.json(ops.listReglesLiquidacioDirecta());
+});
+
+router.post('/liquidacions-directes/regles', (req, res) => {
+  const { patro } = req.body as { patro: string };
+  res.status(201).json(ops.createReglaLiquidacioDirecta(patro));
+});
+
+router.delete('/liquidacions-directes/regles/:id', (req, res) => {
+  ops.deleteReglaLiquidacioDirecta(req.params.id);
+  res.json({ ok: true });
+});
+
+router.get('/liquidacions-directes/suggeriments-marcatge', (_req, res) => {
+  res.json(ops.suggereixMarcatgeLiquidacioDirecta());
+});
+
+router.post('/liquidacions-directes/marca', (req, res) => {
+  const { movimentId, value } = req.body as { movimentId: string; value: boolean };
+  try {
+    ops.marcaEsLiquidacioDirecta(movimentId, value);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+router.get('/liquidacions-directes/suggeriments-aparellament', (_req, res) => {
+  res.json(ops.suggereixAparellamentsDirectes());
+});
+
+router.post('/liquidacions-directes/aparella', (req, res) => {
+  const { targetaMovimentId, correntMovimentId } = req.body as { targetaMovimentId: string; correntMovimentId: string };
+  try {
+    ops.aparellaLiquidacioDirecta(targetaMovimentId, correntMovimentId);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+router.post('/liquidacions-directes/desaparella', (req, res) => {
+  const { targetaMovimentId } = req.body as { targetaMovimentId: string };
+  ops.desaparellaLiquidacioDirecta(targetaMovimentId);
+  res.json({ ok: true });
+});
+
 // --- Còpia de seguretat ---
 
 router.get('/backup', (_req, res) => {

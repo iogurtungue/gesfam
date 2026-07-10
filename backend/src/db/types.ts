@@ -42,6 +42,10 @@ export interface Moviment {
   esLiquidacioTargetaId?: string;
   /** Si aquest moviment és la contrapartida virtual generada per a una liquidació de targeta, l'id del moviment real (compte corrent) que la va originar. */
   movimentOrigenId?: string;
+  /** Marca un moviment de targeta com una retirada/disposició d'efectiu (o similar) que es cobra directament al compte corrent, sense passar per la liquidació mensual (especificacio.md 3.2.1). */
+  esLiquidacioDirecta?: boolean;
+  /** Id del moviment amb què està aparellat com a liquidació directa: el moviment de targeta apunta al càrrec del compte corrent i viceversa. */
+  aparellatAmbId?: string;
 }
 
 export interface LotImportacio {
@@ -73,4 +77,11 @@ export interface ReglaLiquidacioTargeta {
   /** Subcadena a buscar dins el concepte normalitzat (comparació insensible a majúscules). */
   patro: string;
   targetaCompteId: string;
+}
+
+/** Detecta automàticament, pel concepte del propi moviment de targeta, si es tracta d'una retirada/disposició d'efectiu que s'ha de tractar com a liquidació directa (especificacio.md 3.2.1). */
+export interface ReglaLiquidacioDirecta {
+  id: string;
+  /** Subcadena a buscar dins el concepte normalitzat (comparació insensible a majúscules). */
+  patro: string;
 }
