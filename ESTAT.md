@@ -40,6 +40,10 @@ backend/src/
                002_comptes_ordre_grup.sql   Afegeix `ordre`/`grup` a comptes
                003_liquidacio_targeta.sql   Afegeix `es_liquidacio_targeta_id`/`moviment_origen_id`
                                             a moviments i la taula `regles_liquidacio`
+               004_liquidacio_directa.sql   Afegeix `es_liquidacio_directa`/`aparellat_amb_id` a
+                                            moviments, la taula `regles_liquidacio_directa` (amb
+                                            regles predefinides sembrades) i la categoria
+                                            "Efectiu retirat"
     client.ts        getDb() — obre/crea dades/finances.db (node:sqlite DatabaseSync), aplica
                       migracions pendents (versionades per nom de fitxer, taula _migrations),
                       WAL mode. DB_PATH/DADES_DIR overridables per GESFAM_DB_PATH/GESFAM_DADES_DIR
@@ -47,19 +51,23 @@ backend/src/
     backupFile.ts     backupDbFile() — checkpoint WAL + còpia timestampada a dades/backups/,
                       reté només les N més recents. Cridada abans de commitImport, eliminaCompte,
                       importaCopiaSeguretat, reinicialitzaBaseDades, eliminaTotsElsMoviments
-    types.ts          Compte, Moviment (amb `seq`, `esLiquidacioTargetaId`, `movimentOrigenId`),
-                      LotImportacio, Categoria, ReglaCategoritzacio, ReglaLiquidacioTargeta
+    types.ts          Compte, Moviment (amb `seq`, `esLiquidacioTargetaId`, `movimentOrigenId`,
+                      `esLiquidacioDirecta`, `aparellatAmbId`), LotImportacio, Categoria,
+                      ReglaCategoritzacio, ReglaLiquidacioTargeta, ReglaLiquidacioDirecta
                       (interfícies camelCase; mapeig manual a/des de columnes snake_case)
     operations.ts     Tota la lògica de negoci sobre SQLite: importació/dedup/undo,
                       categories/regles, transferències internes, liquidacions de targeta
                       (marcaLiquidacioTargeta/desmarcaLiquidacioTargeta/suggereixLiquidacionsTargeta,
-                      especificacio.md 3.2.1), còpia de seguretat, reinicialització — equivalent 1:1
-                      al `db/operations.ts` de Dexie de l'antiga arquitectura, ara amb SQL preparat
-                      en lloc de crides a Dexie
+                      especificacio.md 3.2.1), liquidacions directes de targeta
+                      (marcaEsLiquidacioDirecta/aparellaLiquidacioDirecta/desaparellaLiquidacioDirecta/
+                      suggereixMarcatgeLiquidacioDirecta/suggereixAparellamentsDirectes, mateixa
+                      secció), còpia de seguretat, reinicialització — equivalent 1:1 al
+                      `db/operations.ts` de Dexie de l'antiga arquitectura, ara amb SQL preparat en
+                      lloc de crides a Dexie
 
   lib/              Utilitats pures i testejades (numbers, dates, concept, hash, encoding,
-                     categorization, internalTransfers, liquidacioTargeta) — subconjunt "de
-                     backend" (parseig/dedup) de les utilitats originals
+                     categorization, internalTransfers, liquidacioTargeta, liquidacioDirecta) —
+                     subconjunt "de backend" (parseig/dedup) de les utilitats originals
 
   parsers/, dedup/  Mateixos mòduls que abans (independents de qualsevol capa de persistència),
                     ara executant-se al backend. `importFile.ts` pren `{name, buffer: ArrayBuffer}`
@@ -108,6 +116,7 @@ frontend/src/
 - **Deduplicació**: id = hash(banc, compteId, dataOperació, import, concepte normalitzat, saldo posterior). Limitació documentada (spec 3.3): dos moviments idèntics el mateix dia amb el mateix saldo posterior col·lideixen; es tracta com a duplicat.
 - **Targetes de crèdit**: no tenen columna de saldo a l'origen, així que el "saldo" mostrat és el deute acumulat dels moviments importats (suma de `importCents`), no un saldo bancari verificat. Etiquetat com a tal a la UI (spec 3.2.1).
 - **Liquidació de targeta — contrapartida automàtica** (spec 3.2.1): l'extracte de la targeta mai inclou la seva pròpia liquidació, així que el deute (suma de `importCents`) creixeria indefinidament sense una contrapartida. Marcar el càrrec del compte corrent com "liquidació de la targeta X" (`marcaLiquidacioTargeta`) crea un moviment virtual a la targeta amb `movimentOrigenId` apuntant al càrrec real, id determinista (`computeContrapartidaId`, idempotent davant reimportacions) i el mateix `lotImportacioId` que el càrrec — així `undoLot` ja l'elimina en cascada sense cap codi addicional. Tots dos es marquen `esTransferenciaInterna=true` (exclosos dels agregats de `summary.ts`, i haurien d'excloure's igualment de la futura detecció de recurrents). La quadratura (import liquidat vs. suma de moviments de la targeta des de l'anterior liquidació) es calcula i es retorna a la crida de marcar, per mostrar un avís no bloquejant si no coincideix.
+- **Liquidació directa de targeta** (spec 3.2.1): a diferència del punt anterior, aquí els **dos** moviments ja existeixen com a moviments reals importats (p. ex. una retirada d'efectiu apareix tant a l'extracte de la targeta com al del compte corrent que la va cobrar directament) — no cal cap moviment virtual, només aparellar-los. Decisió deliberada sobre qui "guanya" com a despesa comptada: el moviment de **targeta** es marca `esTransferenciaInterna=true` (exclòs dels agregats) i el càrrec del **compte corrent** és qui compta la despesa real, amb la categoria per defecte "Efectiu retirat" (cercada sempre pel nom via `obteOCreaCategoriaEfectiuRetirat`, mai per un id fix, perquè sobrevisqui a `reinicialitzaBaseDades`). L'aparellament es guarda com un punter mutu (`aparellatAmbId` a tots dos costats, sense taula pont) — idempotent per construcció (reaparellar només actualitza les mateixes columnes). En desfer un lot, `desaparellaLiquidacioDirectaPerEliminacio` neteja la referència penjada del costat que sobreviu i, si és el de targeta, el restaura com a despesa normal (`esTransferenciaInterna=false`) perquè la despesa no desaparegui silenciosament. La quadratura de la liquidació mensual (punt anterior) exclou aquests moviments de la suma esperada.
 - **Transferències internes**: mai es marquen automàticament. Hi ha un detector heurístic (`suggereixTransferenciesInternes`) que proposa parelles (mateix import, signe oposat, comptes diferents, ±2 dies) però requereix confirmació explícita de l'usuari — validat amb dades reals que produeix tant positius certs com falsos positius plausibles.
 - **Categories/regles**: aplicades automàticament en importar (moviments nous), mai sobreescriuen una categoria ja assignada manualment. Hi ha un botó per reaplicar regles només als moviments sense categoria.
 - **Número de compte per deduplicar entre sessions**: els bancs de taula (ING/BBVA-targeta/OpenBank) no posen el número de compte a la capçalera de moviments — es va afegir `findLabeledValue` per extreure'l de les metadades del fitxer (p. ex. "Número de cuenta:"), imprescindible perquè l'app reconegui "aquest fitxer ja és d'aquest compte" entre importacions separades.
@@ -117,7 +126,9 @@ frontend/src/
 
 ### Estat de les proves
 
-Backend: 105 tests (Vitest) — parsers, dedup, `lib/` (inclou `liquidacioTargeta.ts`, `computeContrapartidaId`), `db/operations.ts` contra SQLite en memòria (`GESFAM_DB_PATH=':memory:'`, inclou el mecanisme de liquidació de targeta: marcatge, quadratura, idempotència, cascada via `undoLot`), `db/client.ts` (migracions) i `db/backupFile.ts` (còpia + retenció). Frontend: 25 tests — `lib/balance.ts`, `lib/summary.ts`, `lib/dates.ts`, `lib/numbers.ts` (només lògica de visualització, ja no hi ha res a testejar amb `fake-indexeddb`; el formulari de "nova regla" de `MovimentsList.tsx` reutilitza `createRegla`/`aplicaReglesAMovimentsSenseCategoria`, ja coberts pels tests de `CategoriesManager`/backend, i no té tests propis). `npx tsc -b` net a totes dues bandes, `npm run build` (frontend) i `oxlint` (frontend) nets.
+Backend: 126 tests (Vitest) — parsers, dedup, `lib/` (inclou `liquidacioTargeta.ts`/`computeContrapartidaId` i el nou `liquidacioDirecta.ts`), `db/operations.ts` contra SQLite en memòria (`GESFAM_DB_PATH=':memory:'`, inclou els dos mecanismes de liquidació de targeta: marcatge/quadratura/idempotència/cascada via `undoLot` per a la liquidació mensual, i marcatge/aparellament/quadratura-exclosa/cascada per a la liquidació directa), `db/client.ts` (migracions) i `db/backupFile.ts` (còpia + retenció). Frontend: 25 tests — `lib/balance.ts`, `lib/summary.ts`, `lib/dates.ts`, `lib/numbers.ts` (només lògica de visualització; la UI de liquidació directa reutilitza el mateix patró de suggeriments/confirmació ja provat al backend, sense tests propis de component). `npx tsc -b` net a totes dues bandes, `npm run build` (frontend) i `oxlint` (frontend) nets.
+
+Verificació manual addicional (API real, dades temporals): retirada d'efectiu marcada per regla, aparellada amb el càrrec del compte corrent (targeta marcada com a transferència interna, càrrec amb categoria "Efectiu retirat"), quadratura de la liquidació mensual excloent-la correctament, i cascada d'`undoLot` restaurant el moviment de targeta com a despesa normal en desfer el lot del càrrec aparellat.
 
 Verificació addicional (no automatitzada, feta manualment durant la migració d'arquitectura, vegeu historial): migració de la còpia de seguretat JSON real de l'usuari (4 comptes, 266 moviments, 4 lots, 23 categories, 15 regles) a SQLite amb comparació camp a camp — 0 diferències reals; arrencada de `npm start` real contra `dades/finances.db` migrat, import/undo/eliminar compte de prova via HTTP (confirmant que `backupDbFile()` es dispara), i reinici del servidor confirmant que les dades hi són intactes.
 
@@ -132,6 +143,19 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - Cap canvi d'aquesta migració s'ha commitejat ni pujat encara (últim commit `2b68f78`, Fase 2 + correccions).
 
 ## 2. Historial de canvis
+
+### 2026-07-10 — Liquidacions directes de targeta: retirades d'efectiu que es cobren al compte corrent sense passar per la liquidació mensual
+
+En validar la Fase 2, l'usuari va detectar un segon cas no cobert pel mecanisme de contrapartida (entrada anterior): les retirades d'efectiu en caixer amb targeta apareixen a l'extracte de la targeta però **mai** entren a la liquidació mensual — es carreguen directament al compte corrent. Sense tractament, la despesa es duplicava (un cop a cada extracte) i trencava la quadratura de la liquidació mensual (que esperava trobar-les-hi). Vegeu especificacio.md 3.2.1 (ampliada) per al disseny complet.
+
+- `backend/src/db/migrations/004_liquidacio_directa.sql`: afegeix `es_liquidacio_directa`/`aparellat_amb_id` a `moviments`, la taula `regles_liquidacio_directa` (sembrada amb 4 patrons predefinits: "RETIRADA EFECTIVO", "DISPOSICION", "CAJERO", "REINTEGRO" — a diferència de `regles_liquidacio`, no apunten a cap targeta concreta) i la categoria "Efectiu retirat".
+- `backend/src/lib/liquidacioDirecta.ts` (nou): `esRetiradaEfectiu` (mateixa lògica de substring que `pickCategoriaId`, però booleana) i `suggereixAparellamentsLiquidacioDirecta` (aparella pel **mateix** import, no el signe oposat com `suggereixTransferenciesInternes` — tots dos extractes registren la mateixa despesa real, no és un moviment entre dos comptes propis).
+- `backend/src/db/operations.ts`: decisió clau sobre qui compta com a despesa — el moviment de **targeta** es marca `esTransferenciaInterna=true` (exclòs dels agregats) i el càrrec del **compte corrent** és qui compta la despesa real, rebent la categoria per defecte "Efectiu retirat" (`obteOCreaCategoriaEfectiuRetirat`, cercada sempre pel nom, mai per un id fix, perquè sobrevisqui a `reinicialitzaBaseDades`). L'aparellament és un punter mutu (`aparellatAmbId` a tots dos costats), idempotent per construcció. `marcaEsLiquidacioDirecta` (marca/desmarca manual, amb cascada de desaparellament en desmarcar), `suggereixMarcatgeLiquidacioDirecta` (proposa moviments de targeta pel patró), `aparellaLiquidacioDirecta`/`desaparellaLiquidacioDirecta` (aparellament manual o via suggeriment), `suggereixAparellamentsDirectes` (proposa parelles agrupant per `compteLiquidacioId` de cada targeta). `undoLot` ara també crida `desaparellaLiquidacioDirectaPerEliminacio`: si es desfà el lot d'un dels dos moviments aparellats, neteja la referència penjada del que sobreviu i, si és el de targeta, el restaura com a despesa normal — sense això, la despesa hauria desaparegut silenciosament (ni comptava com a transferència interna útil, ni com a despesa real). La quadratura de `marcaLiquidacioTargeta` exclou ara els moviments `es_liquidacio_directa` de la suma esperada. De pas, `reinicialitzaBaseDades` ara neteja també `regles_liquidacio`/`regles_liquidacio_directa` (abans no ho feia per a `regles_liquidacio`, un buit ja existent).
+- `backend/src/routes.ts`: noves rutes `GET/POST /liquidacions-directes/regles`, `DELETE /liquidacions-directes/regles/:id`, `GET /liquidacions-directes/suggeriments-marcatge`, `POST /liquidacions-directes/marca`, `GET /liquidacions-directes/suggeriments-aparellament`, `POST /liquidacions-directes/aparella`, `POST /liquidacions-directes/desaparella`.
+- `frontend/src/views/MovimentsList.tsx`: la columna "Liquidació" ja existent ara també gestiona moviments de targeta (botó "E" per marcar, "P" per aparellar manualment amb una fila expandible de candidats del compte corrent associat carregats a la selecció activa, "D" per desmarcar/desaparellar), amb dos nous banners de suggeriments ("Retirades d'efectiu suggerides" i "Aparellaments de liquidació directa suggerits").
+- `frontend/src/views/AccountsManager.tsx`: nova secció "Regles de liquidació directa (retirades d'efectiu)" (només patró, sense selector de targeta ja que les regles són globals).
+- Tests nous: `backend/src/lib/liquidacioDirecta.test.ts` (10) i un nou bloc a `backend/src/db/operations.test.ts` (11) — 126 tests backend (abans 105), 25 frontend, `tsc -b` net a totes dues bandes.
+- Verificat manualment via API real (curl) contra una base de dades temporal: creació de regla, suggeriment de marcatge, marcatge, suggeriment d'aparellament (agrupat pel `compteLiquidacioId` de la targeta), aparellament (targeta com a transferència interna, càrrec amb categoria "Efectiu retirat"), quadratura de la liquidació mensual del mateix mes excloent correctament la retirada, i `undoLot` del lot del compte corrent restaurant el moviment de targeta com a despesa normal (desaparellat, `esTransferenciaInterna=false`, `esLiquidacioDirecta` intacte). No verificat interactivament al navegador.
 
 ### 2026-07-08 — Contrapartida automàtica de liquidacions de targeta (tanca un buit detectat en validar la Fase 2)
 
