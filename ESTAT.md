@@ -133,6 +133,10 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 
 ## 2. Historial de canvis
 
+### 2026-07-11 — Revertida la funcionalitat de liquidacions directes de targeta
+
+L'usuari ha demanat tornar a la versió anterior a GitHub. S'ha desfet amb `git revert` (no `reset`) la funcionalitat de "liquidació directa" (retirades d'efectiu que es cobren directament al compte corrent) introduïda el 2026-07-10, mantenint l'historial intacte. Es reverteixen els 3 commits: `9dde33c` (backend), `f322fef` (frontend), `9327523` (documentació). Torna a haver-hi 105 tests backend (abans 126) i 25 frontend; `tsc -b` i tests nets a totes dues bandes després del revert. El buit de les retirades d'efectiu (detectat en validació) continua obert — pendent de decidir si es reimplementa més endavant.
+
 ### 2026-07-08 — Contrapartida automàtica de liquidacions de targeta (tanca un buit detectat en validar la Fase 2)
 
 En validar la Fase 2, l'usuari va detectar que el deute de les targetes creix indefinidament: l'extracte de la targeta mai inclou la seva pròpia liquidació mensual (només apareix com un càrrec al compte corrent), així que marcar-la com a simple "transferència interna" (ja existent) no n'hi ha prou — cal una contrapartida que realment cancel·li el deute acumulat. Vegeu especificacio.md 3.2.1 (reescrita) per al disseny complet.
