@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { creaConsultaSaldo, creaSaldoAcumulatPerMoviment } from '../lib/balance';
+import { creaConsultaSaldo, creaRangCronologicPerMoviment, creaSaldoAcumulatPerMoviment } from '../lib/balance';
 import { avui, formatDateEs } from '../lib/dates';
 import { centsToEs } from '../lib/numbers';
 import {
@@ -96,6 +96,23 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
     return map;
   }, [moviments, seleccionats]);
 
+  // Posició de cada moviment de targeta en l'ordre cronològic real
+  // reconstruït (mateix càlcul que saldoAcumulatTargetaPerMoviment): la
+  // taula ha d'ordenar les files d'un mateix dia amb aquest mateix criteri,
+  // no amb `seq` cru, o els saldos tornarien a semblar desordenats encara
+  // que cada valor individual fos correcte.
+  const rangCronologicTargetaPerMoviment = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of seleccionats) {
+      if (c.tipus !== 'targeta') continue;
+      const movimentsCompte = moviments.filter((m) => m.compteId === c.id);
+      for (const [id, rang] of creaRangCronologicPerMoviment(movimentsCompte)) {
+        map.set(id, rang);
+      }
+    }
+    return map;
+  }, [moviments, seleccionats]);
+
   function refresh() {
     listMovimentsPerComptes(seleccionats.map((c) => c.id)).then(setMoviments);
     suggereixTransferencies().then(setSuggeriments);
@@ -117,29 +134,43 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
       return true;
     });
     const dir = ordre.direccio === 'asc' ? 1 : -1;
-    // Same-key ties (typically same-day movements) always fall back to `seq`
-    // ascending — i.e. the order they appeared in the imported file — instead
-    // of arbitrary row order, and this tiebreak is NOT flipped by the sort
-    // direction: reversing date order shouldn't reverse a single day's
-    // internal chronology. Excepció: la contrapartida automàtica d'una
-    // liquidació de targeta pren com a "seq efectiu" el del càrrec que
-    // l'origina (no el seu propi seq, molt més alt per haver-se creat després)
+    // Same-key ties (typically same-day movements): per a un moviment de
+    // targeta, el rang de rangCronologicTargetaPerMoviment (mateix ordre que
+    // ha comptat creaSaldoAcumulatPerMoviment, no `seq` cru -- altrament la
+    // fila es mouria per pantalla en un ordre diferent del que reflecteix el
+    // seu propi saldo).
+    //
+    // Aquest desempat SÍ es flipa amb `dir` (a diferència d'una primera
+    // versió que no ho feia): quan la taula està ordenada per data
+    // descendent (per defecte, la més recent a dalt), l'usuari espera
+    // llegir-la de més recent a més antic de dalt a baix DE MANERA
+    // CONSISTENT, també dins d'un mateix dia -- si el desempat es quedés
+    // sempre "més antic primer" independentment de `dir`, en ordenar per
+    // data descendent es veuria un patró en dents de serra (les dates es
+    // succeeixen de més recent a més antiga, però dins de cada dia l'ordre
+    // aniria a l'inrevés), exactament el bug reportat: "l'últim moviment
+    // del dia hauria de ser el primer".
+    //
+    // Excepció: la contrapartida automàtica d'una liquidació de targeta pren
+    // com a "clau efectiva" la del càrrec que l'origina (no la seva pròpia)
     // perquè es comporti, davant de la RESTA de moviments del dia, com si
     // estigués a la mateixa posició que el càrrec -- comparar-la només contra
-    // el càrrec (seq idèntic per construcció) no n'hi ha prou: un comparador
-    // que namés desempata aquest parell concret deixa de ser transitiu quan
-    // hi ha un tercer moviment aquell dia, i Array.sort no garanteix cap
-    // resultat concret en aquest cas (bug real: la contrapartida acabava al
-    // final del dia en lloc de just per sobre del càrrec). El seu saldo
-    // (creaSaldoAcumulatPerMoviment / creaConsultaSaldo) ja es calcula per
-    // data/lot, no per aquest ordre visual, així que no es veu afectat.
-    const seqOrigen = new Map(moviments.map((m) => [m.id, m.seq]));
-    function seqEfectiu(m: Moviment): number {
-      return (m.movimentOrigenId ? seqOrigen.get(m.movimentOrigenId) : undefined) ?? m.seq;
+    // el càrrec no n'hi ha prou: un comparador que només desempata aquest
+    // parell concret deixa de ser transitiu quan hi ha un tercer moviment
+    // aquell dia (bug real: la contrapartida acabava al final del dia en
+    // lloc de just per sobre del càrrec). Aquesta relació de parella es manté
+    // fixa independentment de `dir`.
+    const movimentPerId = new Map(moviments.map((m) => [m.id, m]));
+    function clauOrdre(m: Moviment): number {
+      if (m.movimentOrigenId) {
+        const origen = movimentPerId.get(m.movimentOrigenId);
+        if (origen) return clauOrdre(origen);
+      }
+      return rangCronologicTargetaPerMoviment.get(m.id) ?? m.seq;
     }
     function comparaParella(a: Moviment, b: Moviment): number {
-      const diferencia = seqEfectiu(a) - seqEfectiu(b);
-      if (diferencia !== 0) return diferencia;
+      const diferencia = clauOrdre(a) - clauOrdre(b);
+      if (diferencia !== 0) return diferencia * dir;
       if (a.movimentOrigenId === b.id) return -1;
       if (b.movimentOrigenId === a.id) return 1;
       return a.seq - b.seq;
@@ -148,7 +179,7 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
       if (ordre.camp === 'concepteOriginal') return a.concepteOriginal.localeCompare(b.concepteOriginal) * dir || comparaParella(a, b);
       return a.dataOperacio.localeCompare(b.dataOperacio) * dir || comparaParella(a, b);
     });
-  }, [moviments, dataDes, dataFins, categoriaFiltre, text, tipus, ordre]);
+  }, [moviments, dataDes, dataFins, categoriaFiltre, text, tipus, ordre, rangCronologicTargetaPerMoviment]);
 
   function canviaOrdre(camp: CampOrdre) {
     setOrdre((prev) => (prev.camp === camp ? { camp, direccio: prev.direccio === 'asc' ? 'desc' : 'asc' } : { camp, direccio: 'asc' }));
@@ -180,15 +211,44 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
     URL.revokeObjectURL(url);
   }
 
+  /** Versió en text pla de cellaLiquidacio, per a l'exportació a Excel (que reprodueix la graella tal com es veu a pantalla). */
+  function liquidacioText(m: Moviment): string {
+    if (m.movimentOrigenId) return 'Contrapartida';
+    if (compteById.get(m.compteId)?.tipus !== 'corrent') return '';
+    if (m.esLiquidacioTargetaId) return compteById.get(m.esLiquidacioTargetaId)?.alias ?? m.esLiquidacioTargetaId;
+    return '';
+  }
+
   async function exportaExcel() {
     // Import dinàmic: xlsx és una llibreria pesada (~300kB) que només cal
     // carregar quan realment s'exporta, no al càrregar la pàgina.
     const XLSX = await import('xlsx');
+    // Reprodueix la graella tal com es veu a pantalla: una columna Import/Saldo
+    // per cada compte seleccionat (no només el propi de cada moviment), en
+    // lloc de la llista plana d'exportaCSV amb una única columna "Compte".
+    const capçalera = [
+      'Data',
+      'Concepte',
+      'Categoria',
+      'TI',
+      ...(targetes.length > 0 ? ['Liquidació'] : []),
+      ...seleccionats.flatMap((c) => [`${c.alias} - Import`, `${c.alias} - Saldo`]),
+    ];
     const files = filtrats.map((m) => {
-      const saldo = saldoPropiCents(m);
-      return [formatDateEs(m.dataOperacio), compteAlias(m.compteId), m.concepteOriginal, m.importCents / 100, saldo !== null ? saldo / 100 : '', categoriaNom(m.categoriaId)];
+      const fila: (string | number)[] = [formatDateEs(m.dataOperacio), m.concepteOriginal, categoriaNom(m.categoriaId), m.esTransferenciaInterna ? 'Sí' : 'No'];
+      if (targetes.length > 0) fila.push(liquidacioText(m));
+      for (const c of seleccionats) {
+        if (c.id === m.compteId) {
+          const saldo = saldoPropiCents(m);
+          fila.push(m.importCents / 100, saldo !== null ? saldo / 100 : '');
+        } else {
+          const saldoAnterior = consultaSaldoPerCompte.get(c.id)?.(m.dataOperacio) ?? null;
+          fila.push('', saldoAnterior !== null ? saldoAnterior / 100 : '');
+        }
+      }
+      return fila;
     });
-    const worksheet = XLSX.utils.aoa_to_sheet([capçaleraExport, ...files]);
+    const worksheet = XLSX.utils.aoa_to_sheet([capçalera, ...files]);
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Moviments');
     XLSX.writeFile(workbook, `moviments-${avui()}.xlsx`);

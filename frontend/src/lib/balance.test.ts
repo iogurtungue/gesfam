@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { creaConsultaSaldo, creaSaldoAcumulatPerMoviment, saldoEnData } from './balance';
+import { creaConsultaSaldo, creaRangCronologicPerMoviment, creaSaldoAcumulatPerMoviment, saldoEnData } from './balance';
 
 describe('saldoEnData', () => {
   it('returns the running balance of the latest movement on or before the date (compte corrent)', () => {
@@ -188,5 +188,58 @@ describe('creaSaldoAcumulatPerMoviment', () => {
     const acumulatFinsAscendent = -100 - 10 - 20;
     expect(saldos.get('descB2')).toBe(acumulatFinsAscendent - 2);
     expect(saldos.get('descB1')).toBe(acumulatFinsAscendent - 2 - 1);
+  });
+
+  it('a single-date lot (no internal signal) borrows the majority direction of the rest of the account (the actual reported bug: ING-TG-JA, 27/11/2025)', () => {
+    // Real data: a short lot ended up containing only one calendar date
+    // (27/11) after deduplication -- with a single date there's no cross-date
+    // seq/data correlation to infer a direction from, so it used to fall back
+    // to a hardcoded "ascending" default regardless of the account's real
+    // convention. This account's other (multi-date) lot is clearly
+    // descending, so the single-date lot should borrow that instead of
+    // guessing ascending blindly.
+    const d27a = { id: '27a', dataOperacio: '2025-11-27', importCents: -10402, saldoPosteriorCents: null, seq: 1147, lotImportacioId: 'lot-un-sol-dia' };
+    const d27b = { id: '27b', dataOperacio: '2025-11-27', importCents: -1375, saldoPosteriorCents: null, seq: 1148, lotImportacioId: 'lot-un-sol-dia' };
+    const d27c = { id: '27c', dataOperacio: '2025-11-27', importCents: -1400, saldoPosteriorCents: null, seq: 1149, lotImportacioId: 'lot-un-sol-dia' };
+    const d27d = { id: '27d', dataOperacio: '2025-11-27', importCents: -6315, saldoPosteriorCents: null, seq: 1150, lotImportacioId: 'lot-un-sol-dia' };
+    // Decisively descending multi-date lot from the rest of the account's history.
+    const d28 = { id: '28', dataOperacio: '2025-11-28', importCents: -2300, saldoPosteriorCents: null, seq: 1146, lotImportacioId: 'lot-multi-dia' };
+    const d12_01 = { id: '12-01', dataOperacio: '2025-12-01', importCents: -69, saldoPosteriorCents: null, seq: 1145, lotImportacioId: 'lot-multi-dia' };
+
+    const saldos = creaSaldoAcumulatPerMoviment([d27a, d27b, d27c, d27d, d28, d12_01]);
+    // Borrowed descending direction: within 27/11, higher seq (1150, the
+    // -63.15 movement) comes first, not last.
+    expect(saldos.get('27d')).toBe(-6315); // -63.15, not the almost-whole-day -194.92 the user actually saw.
+    expect(saldos.get('27c')).toBe(-6315 - 1400);
+    expect(saldos.get('27b')).toBe(-6315 - 1400 - 1375);
+    expect(saldos.get('27a')).toBe(-6315 - 1400 - 1375 - 10402);
+  });
+
+  it('defaults to ascending when no lot in the account has any signal at all (every lot is single-date)', () => {
+    const a = { id: 'a', dataOperacio: '2026-01-01', importCents: -100, saldoPosteriorCents: null, seq: 0, lotImportacioId: 'lot1' };
+    const b = { id: 'b', dataOperacio: '2026-01-01', importCents: -200, saldoPosteriorCents: null, seq: 1, lotImportacioId: 'lot1' };
+    const saldos = creaSaldoAcumulatPerMoviment([a, b]);
+    expect(saldos.get('a')).toBe(-100);
+    expect(saldos.get('b')).toBe(-300);
+  });
+});
+
+describe('creaRangCronologicPerMoviment', () => {
+  it('matches the order used by creaSaldoAcumulatPerMoviment, so the table can sort rows consistently with the saldo it shows', () => {
+    const d27a = { id: '27a', dataOperacio: '2025-11-27', importCents: -10402, saldoPosteriorCents: null, seq: 1147, lotImportacioId: 'lot-un-sol-dia' };
+    const d27b = { id: '27b', dataOperacio: '2025-11-27', importCents: -1375, saldoPosteriorCents: null, seq: 1148, lotImportacioId: 'lot-un-sol-dia' };
+    const d28 = { id: '28', dataOperacio: '2025-11-28', importCents: -2300, saldoPosteriorCents: null, seq: 1146, lotImportacioId: 'lot-multi-dia' };
+    const d12_01 = { id: '12-01', dataOperacio: '2025-12-01', importCents: -69, saldoPosteriorCents: null, seq: 1145, lotImportacioId: 'lot-multi-dia' };
+
+    const moviments = [d27a, d27b, d28, d12_01];
+    const rangs = creaRangCronologicPerMoviment(moviments);
+    const saldos = creaSaldoAcumulatPerMoviment(moviments);
+
+    const perRang = [...moviments].sort((x, y) => rangs.get(x.id)! - rangs.get(y.id)!);
+    let acumulat = 0;
+    for (const m of perRang) {
+      acumulat += m.importCents;
+      expect(saldos.get(m.id)).toBe(acumulat);
+    }
   });
 });

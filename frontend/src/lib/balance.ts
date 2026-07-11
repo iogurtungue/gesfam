@@ -152,18 +152,24 @@ export interface MovimentAcumulat extends MovimentPerSaldo {
  * comprovat amb dades reals). Per això la direcció es dedueix per lot,
  * comparant el seq dels moviments de la data més antiga d'aquell lot contra
  * els de la data més recent: si el seq puja amb la data, el lot és
- * ascendent; si baixa, és descendent. Un lot amb una sola data no dona cap
- * senyal i es tracta com a ascendent per defecte (no canvia res, ja que no
- * hi ha cap altra data amb qui desempatar).
+ * ascendent; si baixa, és descendent.
+ *
+ * Retorna 0 (sense senyal) quan el lot només té una data -- típicament un
+ * lot curt on la deduplicació ha descartat totes les files excepte les d'un
+ * sol dia (bug real detectat: un lot de 4 moviments, tots del mateix dia,
+ * queia sempre al "per defecte ascendent" encara que el conveni real del
+ * fitxer -- i de la resta de lots del mateix compte -- fos descendent). El
+ * cridant ha de resoldre aquest cas amb algun altre senyal (veure
+ * creaSaldoAcumulatPerMoviment).
  */
-function inferDireccioLot(moviments: { dataOperacio: string; seq: number }[]): 1 | -1 {
+function inferDireccio(moviments: { dataOperacio: string; seq: number }[]): 1 | -1 | 0 {
   let dataMin = moviments[0].dataOperacio;
   let dataMax = moviments[0].dataOperacio;
   for (const m of moviments) {
     if (m.dataOperacio < dataMin) dataMin = m.dataOperacio;
     if (m.dataOperacio > dataMax) dataMax = m.dataOperacio;
   }
-  if (dataMin === dataMax) return 1;
+  if (dataMin === dataMax) return 0;
 
   const mitjana = (data: string) => {
     const seqs = moviments.filter((m) => m.dataOperacio === data).map((m) => m.seq);
@@ -173,38 +179,78 @@ function inferDireccioLot(moviments: { dataOperacio: string; seq: number }[]): 1
 }
 
 /**
- * Deute acumulat d'un compte targeta immediatament després de cada moviment
- * concret (a diferència de creaConsultaSaldo, que només resol "saldo vigent
- * en una data" i per tant no distingeix entre diversos moviments del mateix
- * dia). Com que la suma és order-independent (veure saldoEnData), l'ordre
- * cronològic exacte dins del mateix dia només importa per decidir quin
- * valor mostrar a cada fila, no pel resultat final acumulat -- però cal
- * encertar-lo igualment perquè els valors intermedis no semblin desordenats
- * (veure inferDireccioLot per la direcció de desempat).
+ * Reconstrueix l'ordre cronològic real dels moviments d'un compte targeta
+ * (veure inferDireccio per què cal fer-ho lot a lot en lloc de confiar en
+ * `seq` directament). Únic punt on es decideix aquest ordre: tant
+ * creaSaldoAcumulatPerMoviment (el valor de saldo) com la taula de
+ * Moviments (l'ordre visual de les files) l'han d'utilitzar, o els dos
+ * deixen de coincidir i els saldos tornen a semblar desordenats encara que
+ * cadascun, per separat, sigui "correcte".
  */
-export function creaSaldoAcumulatPerMoviment(moviments: MovimentAcumulat[]): Map<string, number> {
+function ordenaMovimentsTargeta(moviments: MovimentAcumulat[]): MovimentAcumulat[] {
   const perLot = new Map<string, MovimentAcumulat[]>();
   for (const m of moviments) {
     const grup = perLot.get(m.lotImportacioId);
     if (grup) grup.push(m);
     else perLot.set(m.lotImportacioId, [m]);
   }
+
+  // Cada lot amb senyal propi (més d'una data) vota per la seva direcció;
+  // un lot sense senyal (una sola data) es resol després amb el vot
+  // majoritari de la resta de lots del mateix compte -- el conveni d'un
+  // fitxer és una propietat del banc/compte, no d'un lot concret, així que
+  // "manlleva-la de la resta de la teva pròpia història" és més fiable que
+  // triar sempre ascendent a cegues.
   const direccioPerLot = new Map<string, 1 | -1>();
+  let vots = 0;
   for (const [lotId, grup] of perLot) {
-    direccioPerLot.set(lotId, inferDireccioLot(grup));
+    const direccio = inferDireccio(grup);
+    if (direccio !== 0) {
+      direccioPerLot.set(lotId, direccio);
+      vots += direccio;
+    }
+  }
+  const direccioPerDefecte: 1 | -1 = vots < 0 ? -1 : 1;
+  for (const lotId of perLot.keys()) {
+    if (!direccioPerLot.has(lotId)) direccioPerLot.set(lotId, direccioPerDefecte);
   }
 
-  const ordenats = [...moviments].sort((a, b) => {
+  return [...moviments].sort((a, b) => {
     if (a.dataOperacio !== b.dataOperacio) return a.dataOperacio.localeCompare(b.dataOperacio);
     if (a.lotImportacioId !== b.lotImportacioId) return a.seq - b.seq;
     return (direccioPerLot.get(a.lotImportacioId) ?? 1) * (a.seq - b.seq);
   });
+}
 
+/**
+ * Deute acumulat d'un compte targeta immediatament després de cada moviment
+ * concret (a diferència de creaConsultaSaldo, que només resol "saldo vigent
+ * en una data" i per tant no distingeix entre diversos moviments del mateix
+ * dia). Com que la suma és order-independent (veure saldoEnData), l'ordre
+ * cronològic exacte dins del mateix dia només importa per decidir quin
+ * valor mostrar a cada fila, no pel resultat final acumulat -- però cal
+ * encertar-lo igualment perquè els valors intermedis no semblin desordenats.
+ */
+export function creaSaldoAcumulatPerMoviment(moviments: MovimentAcumulat[]): Map<string, number> {
   const resultat = new Map<string, number>();
   let acumulat = 0;
-  for (const m of ordenats) {
+  for (const m of ordenaMovimentsTargeta(moviments)) {
     acumulat += m.importCents;
     resultat.set(m.id, acumulat);
   }
+  return resultat;
+}
+
+/**
+ * Posició de cada moviment en l'ordre cronològic real reconstruït (0 = el
+ * més antic). Perquè la taula de Moviments pugui ordenar visualment les
+ * files d'un mateix dia igual que creaSaldoAcumulatPerMoviment les ha
+ * comptat -- altrament l'ordre de pantalla i el valor de saldo es calculen
+ * de manera independent i poden discrepar (els saldos tornen a semblar
+ * desordenats encara que el número de cada fila sigui correcte).
+ */
+export function creaRangCronologicPerMoviment(moviments: MovimentAcumulat[]): Map<string, number> {
+  const resultat = new Map<string, number>();
+  ordenaMovimentsTargeta(moviments).forEach((m, index) => resultat.set(m.id, index));
   return resultat;
 }
