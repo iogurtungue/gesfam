@@ -318,6 +318,11 @@ export function commitImport(compte: Compte, moviments: ParsedMoviment[], fitxer
 export function undoLot(lotId: string): void {
   const db = getDb();
   transaction(db, () => {
+    db.prepare(
+      `DELETE FROM transferencies_descartades
+       WHERE moviment_a_id IN (SELECT id FROM moviments WHERE lot_importacio_id = ?)
+          OR moviment_b_id IN (SELECT id FROM moviments WHERE lot_importacio_id = ?)`,
+    ).run(lotId, lotId);
     db.prepare('DELETE FROM moviments WHERE lot_importacio_id = ?').run(lotId);
     db.prepare('DELETE FROM lots WHERE id = ?').run(lotId);
   });
@@ -476,6 +481,7 @@ export function eliminaMoviment(movimentId: string): void {
     } else if (moviment.movimentOrigenId) {
       db.prepare('UPDATE moviments SET es_liquidacio_targeta_id = NULL, es_transferencia_interna = 0 WHERE id = ?').run(moviment.movimentOrigenId);
     }
+    db.prepare('DELETE FROM transferencies_descartades WHERE moviment_a_id = ? OR moviment_b_id = ?').run(movimentId, movimentId);
     db.prepare('DELETE FROM moviments WHERE id = ?').run(movimentId);
   });
 }
@@ -485,13 +491,28 @@ export interface SuggerimentAmbDetall extends SuggerimentTransferencia {
   movimentB: Moviment;
 }
 
+/** Clau sense ordre per identificar una parella de moviments, independentment de quin dels dos és `a` i quin `b`. */
+function clauParella(a: string, b: string): string {
+  return [a, b].sort().join(':');
+}
+
+export function listTransferenciesDescartades(): SuggerimentTransferencia[] {
+  return (
+    getDb().prepare('SELECT moviment_a_id, moviment_b_id FROM transferencies_descartades').all() as {
+      moviment_a_id: string;
+      moviment_b_id: string;
+    }[]
+  ).map((r) => ({ a: r.moviment_a_id, b: r.moviment_b_id }));
+}
+
 /** Suggests candidate internal-transfer pairs across all accounts, for the user to confirm (spec 3.4). */
 export function suggereixTransferencies(): SuggerimentAmbDetall[] {
   const moviments = listAllMoviments().filter((m) => !m.esTransferenciaInterna);
   const perId = new Map(moviments.map((m) => [m.id, m]));
+  const descartades = new Set(listTransferenciesDescartades().map((t) => clauParella(t.a, t.b)));
   const suggeriments = suggereixTransferenciesInternes(
     moviments.map((m) => ({ id: m.id, compteId: m.compteId, dataOperacio: m.dataOperacio, importCents: m.importCents })),
-  );
+  ).filter((s) => !descartades.has(clauParella(s.a, s.b)));
   return suggeriments.map((s) => ({ ...s, movimentA: perId.get(s.a)!, movimentB: perId.get(s.b)! }));
 }
 
@@ -501,6 +522,13 @@ export function confirmaTransferencia(suggeriment: SuggerimentTransferencia): vo
     db.prepare('UPDATE moviments SET es_transferencia_interna = 1 WHERE id = ?').run(suggeriment.a);
     db.prepare('UPDATE moviments SET es_transferencia_interna = 1 WHERE id = ?').run(suggeriment.b);
   });
+}
+
+/** Descarta un suggeriment de transferència interna (falsa alarma): no torna a aparèixer a suggereixTransferencies, sense marcar els moviments com a transferència interna. */
+export function descartaTransferencia(suggeriment: SuggerimentTransferencia): void {
+  getDb()
+    .prepare('INSERT OR IGNORE INTO transferencies_descartades (id, moviment_a_id, moviment_b_id) VALUES (?, ?, ?)')
+    .run(clauParella(suggeriment.a, suggeriment.b), suggeriment.a, suggeriment.b);
 }
 
 // --- Liquidacions de targeta (especificacio.md 3.2.1) ---
@@ -705,6 +733,7 @@ export interface Backup {
   categories: Categoria[];
   regles: ReglaCategoritzacio[];
   reglesLiquidacio: ReglaLiquidacioTargeta[];
+  transferenciesDescartades: SuggerimentTransferencia[];
 }
 
 export function exportaCopiaSeguretat(): Backup {
@@ -717,6 +746,7 @@ export function exportaCopiaSeguretat(): Backup {
     categories: (getDb().prepare('SELECT * FROM categories').all() as { id: string; nom: string }[]).map(rowToCategoria),
     regles: listRegles(),
     reglesLiquidacio: listReglesLiquidacio(),
+    transferenciesDescartades: listTransferenciesDescartades(),
   };
 }
 
@@ -726,7 +756,7 @@ export function importaCopiaSeguretat(backup: Backup): void {
   const db = getDb();
   transaction(db, () => {
     db.exec(
-      'DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM categories; DELETE FROM comptes;',
+      'DELETE FROM transferencies_descartades; DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM categories; DELETE FROM comptes;',
     );
 
     const insertCompte = db.prepare(
@@ -782,6 +812,10 @@ export function importaCopiaSeguretat(backup: Backup): void {
         m.movimentOrigenId ?? null,
       );
     }
+
+    const insertDescartada = db.prepare('INSERT OR IGNORE INTO transferencies_descartades (id, moviment_a_id, moviment_b_id) VALUES (?, ?, ?)');
+    // `transferenciesDescartades` no existia en còpies de seguretat anteriors a aquesta funcionalitat.
+    for (const t of backup.transferenciesDescartades ?? []) insertDescartada.run(clauParella(t.a, t.b), t.a, t.b);
   });
 }
 
@@ -797,7 +831,9 @@ export function reinicialitzaBaseDades(): void {
   backupDbFile();
   const db = getDb();
   transaction(db, () => {
-    db.exec('DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM categories; DELETE FROM comptes;');
+    db.exec(
+      'DELETE FROM transferencies_descartades; DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM categories; DELETE FROM comptes;',
+    );
     const insert = db.prepare('INSERT INTO categories (id, nom) VALUES (?, ?)');
     for (const nom of DEFAULT_CATEGORIES) insert.run(randomUUID(), nom);
   });
@@ -814,6 +850,6 @@ export function eliminaTotsElsMoviments(): void {
   backupDbFile();
   const db = getDb();
   transaction(db, () => {
-    db.exec('DELETE FROM moviments; DELETE FROM lots;');
+    db.exec('DELETE FROM transferencies_descartades; DELETE FROM moviments; DELETE FROM lots;');
   });
 }

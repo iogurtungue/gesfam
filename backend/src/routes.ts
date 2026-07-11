@@ -148,6 +148,11 @@ router.post('/transferencies/confirma', (req, res) => {
   res.json({ ok: true });
 });
 
+router.post('/transferencies/descarta', (req, res) => {
+  ops.descartaTransferencia(req.body as SuggerimentTransferencia);
+  res.json({ ok: true });
+});
+
 // --- Liquidacions de targeta ---
 
 router.get('/liquidacions/regles', (_req, res) => {

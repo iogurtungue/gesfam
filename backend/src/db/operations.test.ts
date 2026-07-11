@@ -7,11 +7,13 @@ const {
   actualitzaCompte,
   actualitzaRegla,
   commitImport,
+  confirmaTransferencia,
   countMovimentsCompte,
   createCategoria,
   createCompte,
   createRegla,
   createReglaLiquidacio,
+  descartaTransferencia,
   deleteReglaLiquidacio,
   desmarcaLiquidacioTargeta,
   eliminaCompte,
@@ -23,17 +25,19 @@ const {
   listMovimentsPerComptes,
   listReglesLiquidacio,
   listRegles,
+  listTransferenciesDescartades,
   marcaLiquidacioTargeta,
   reinicialitzaBaseDades,
   renombraCategoria,
   setMovimentCategoria,
   suggereixLiquidacionsTargeta,
+  suggereixTransferencies,
   undoLot,
 } = await import('./operations.ts');
 
 beforeEach(() => {
   getDb().exec(
-    'DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM categories; DELETE FROM comptes;',
+    'DELETE FROM transferencies_descartades; DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM categories; DELETE FROM comptes;',
   );
 });
 
@@ -419,6 +423,84 @@ describe('eliminaMoviment', () => {
   });
 });
 
+describe('transferències internes suggerides: descartar (spec 3.4)', () => {
+  function creaParellaSuggerida() {
+    const a = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'A' });
+    const b = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'B' });
+    commitImport(a, [mov('2026-06-01', 'Transferencia sortint', -5000)], 'a.txt');
+    commitImport(b, [mov('2026-06-02', 'Transferencia entrant', 5000)], 'b.txt');
+    return { a, b };
+  }
+
+  it('descartaTransferencia removes the pair from future suggestions without marking the movements', () => {
+    creaParellaSuggerida();
+    const [suggeriment] = suggereixTransferencies();
+    expect(suggeriment).toBeDefined();
+
+    descartaTransferencia({ a: suggeriment.a, b: suggeriment.b });
+
+    expect(suggereixTransferencies()).toEqual([]);
+    const moviments = listMovimentsPerComptes([suggeriment.movimentA.compteId, suggeriment.movimentB.compteId]);
+    expect(moviments.every((m) => !m.esTransferenciaInterna)).toBe(true);
+  });
+
+  it('descartaTransferencia is idempotent (calling it twice does not throw)', () => {
+    creaParellaSuggerida();
+    const [suggeriment] = suggereixTransferencies();
+    descartaTransferencia({ a: suggeriment.a, b: suggeriment.b });
+    expect(() => descartaTransferencia({ a: suggeriment.a, b: suggeriment.b })).not.toThrow();
+    expect(suggereixTransferencies()).toEqual([]);
+  });
+
+  it('discarding one pair does not affect an unrelated pair', () => {
+    creaParellaSuggerida();
+    const altres = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'C' });
+    const altres2 = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'D' });
+    commitImport(altres, [mov('2026-07-01', 'Sortint 2', -2000)], 'c.txt');
+    commitImport(altres2, [mov('2026-07-02', 'Entrant 2', 2000)], 'd.txt');
+
+    const suggeriments = suggereixTransferencies();
+    expect(suggeriments).toHaveLength(2);
+    descartaTransferencia({ a: suggeriments[0].a, b: suggeriments[0].b });
+
+    expect(suggereixTransferencies()).toHaveLength(1);
+  });
+
+  it('confirmaTransferencia still works normally for a non-discarded pair', () => {
+    creaParellaSuggerida();
+    const [suggeriment] = suggereixTransferencies();
+    confirmaTransferencia({ a: suggeriment.a, b: suggeriment.b });
+    expect(suggereixTransferencies()).toEqual([]);
+    const [movimentA] = listMovimentsPerComptes([suggeriment.movimentA.compteId]);
+    expect(movimentA.esTransferenciaInterna).toBe(true);
+  });
+
+  it('eliminaMoviment cleans up any discarded-pair record referencing the deleted movement', () => {
+    creaParellaSuggerida();
+    const [suggeriment] = suggereixTransferencies();
+    descartaTransferencia({ a: suggeriment.a, b: suggeriment.b });
+    expect(listTransferenciesDescartades()).toHaveLength(1);
+
+    eliminaMoviment(suggeriment.a);
+
+    expect(listTransferenciesDescartades()).toEqual([]);
+  });
+
+  it('undoLot cleans up any discarded-pair record referencing a movement in the undone lot', () => {
+    const a = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'A' });
+    const b = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'B' });
+    const { lot } = commitImport(a, [mov('2026-06-01', 'Transferencia sortint', -5000)], 'a.txt');
+    commitImport(b, [mov('2026-06-02', 'Transferencia entrant', 5000)], 'b.txt');
+    const [suggeriment] = suggereixTransferencies();
+    descartaTransferencia({ a: suggeriment.a, b: suggeriment.b });
+    expect(listTransferenciesDescartades()).toHaveLength(1);
+
+    undoLot(lot.id);
+
+    expect(listTransferenciesDescartades()).toEqual([]);
+  });
+});
+
 describe('reinicialitzaBaseDades', () => {
   it('wipes every table and reseeds only the default categories (menú de manteniment)', () => {
     const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Compte de prova' });
@@ -429,6 +511,10 @@ describe('reinicialitzaBaseDades', () => {
     );
     const categoriaManual = createCategoria('Categoria manual');
     createRegla({ patro: 'TEST', categoriaId: categoriaManual.id, prioritat: 0 });
+    const altre = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Altre' });
+    commitImport(altre, [mov('2026-01-01', 'Test 2', 100)], 'test2.txt');
+    const [suggeriment] = suggereixTransferencies();
+    descartaTransferencia({ a: suggeriment.a, b: suggeriment.b });
 
     reinicialitzaBaseDades();
 
@@ -436,6 +522,7 @@ describe('reinicialitzaBaseDades', () => {
     expect(listMovimentsPerComptes([compte.id])).toHaveLength(0);
     expect(listLots()).toHaveLength(0);
     expect(listRegles()).toHaveLength(0);
+    expect(listTransferenciesDescartades()).toEqual([]);
 
     const categories = listCategories();
     expect(categories.length).toBeGreaterThan(0);
