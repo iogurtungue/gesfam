@@ -154,17 +154,23 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
     setOrdre((prev) => (prev.camp === camp ? { camp, direccio: prev.direccio === 'asc' ? 'desc' : 'asc' } : { camp, direccio: 'asc' }));
   }
 
+  const capçaleraExport = ['Data', 'Compte', 'Concepte', 'Import', 'Saldo', 'Categoria'];
+
+  // Saldo "propi" d'un moviment (mateixa lògica que la columna Saldo de la
+  // taula): per a targetes, el deute acumulat calculat al frontend, ja que
+  // saldoPosteriorCents hi és sempre null (els extractes de targeta no en
+  // porten).
+  function saldoPropiCents(m: Moviment): number | null {
+    if (compteById.get(m.compteId)?.tipus === 'targeta') return saldoAcumulatTargetaPerMoviment.get(m.id) ?? null;
+    return m.saldoPosteriorCents;
+  }
+
   function exportaCSV() {
-    const capçalera = ['Data', 'Compte', 'Concepte', 'Import', 'Saldo', 'Categoria'];
-    const files = filtrats.map((m) => [
-      formatDateEs(m.dataOperacio),
-      compteAlias(m.compteId),
-      m.concepteOriginal,
-      centsToEs(m.importCents),
-      m.saldoPosteriorCents !== null ? centsToEs(m.saldoPosteriorCents) : '',
-      categoriaNom(m.categoriaId),
-    ]);
-    const csv = [capçalera, ...files].map((fila) => fila.map(csvField).join(';')).join('\n');
+    const files = filtrats.map((m) => {
+      const saldo = saldoPropiCents(m);
+      return [formatDateEs(m.dataOperacio), compteAlias(m.compteId), m.concepteOriginal, centsToEs(m.importCents), saldo !== null ? centsToEs(saldo) : '', categoriaNom(m.categoriaId)];
+    });
+    const csv = [capçaleraExport, ...files].map((fila) => fila.map(csvField).join(';')).join('\n');
     const blob = new Blob([`﻿${csv}`], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -172,6 +178,20 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
     a.download = `moviments-${avui()}.csv`;
     a.click();
     URL.revokeObjectURL(url);
+  }
+
+  async function exportaExcel() {
+    // Import dinàmic: xlsx és una llibreria pesada (~300kB) que només cal
+    // carregar quan realment s'exporta, no al càrregar la pàgina.
+    const XLSX = await import('xlsx');
+    const files = filtrats.map((m) => {
+      const saldo = saldoPropiCents(m);
+      return [formatDateEs(m.dataOperacio), compteAlias(m.compteId), m.concepteOriginal, m.importCents / 100, saldo !== null ? saldo / 100 : '', categoriaNom(m.categoriaId)];
+    });
+    const worksheet = XLSX.utils.aoa_to_sheet([capçaleraExport, ...files]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Moviments');
+    XLSX.writeFile(workbook, `moviments-${avui()}.xlsx`);
   }
 
   async function handleCategoriaChange(movimentId: string, categoriaId: string) {
@@ -371,6 +391,7 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
           Text: <input value={text} onChange={(e) => setText(e.target.value)} placeholder="cercar al concepte" />
         </label>
         <button onClick={exportaCSV}>Exportar CSV</button>
+        <button onClick={exportaExcel}>Exportar Excel</button>
       </div>
 
       <p>{filtrats.length} moviments</p>
