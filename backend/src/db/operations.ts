@@ -2,21 +2,12 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { backupDbFile } from './backupFile.ts';
 import { getDb } from './client.ts';
-import type {
-  Categoria,
-  Compte,
-  LotImportacio,
-  Moviment,
-  ReglaCategoritzacio,
-  ReglaLiquidacioDirecta,
-  ReglaLiquidacioTargeta,
-} from './types.ts';
+import type { Categoria, Compte, LotImportacio, Moviment, ReglaCategoritzacio, ReglaLiquidacioTargeta } from './types.ts';
 import { splitNousIDuplicats } from '../dedup/index.ts';
 import { pickCategoriaId } from '../lib/categorization.ts';
 import { normalizeConceptForDedup } from '../lib/concept.ts';
 import { computeContrapartidaId } from '../lib/hash.ts';
 import { suggereixTransferenciesInternes, type SuggerimentTransferencia } from '../lib/internalTransfers.ts';
-import { esRetiradaEfectiu, suggereixAparellamentsLiquidacioDirecta } from '../lib/liquidacioDirecta.ts';
 import { pickTargetaLiquidacio } from '../lib/liquidacioTargeta.ts';
 import type { AccountType, BankId, ParsedMoviment } from '../parsers/types.ts';
 
@@ -75,8 +66,6 @@ interface MovimentRow {
   seq: number;
   es_liquidacio_targeta_id: string | null;
   moviment_origen_id: string | null;
-  es_liquidacio_directa: number;
-  aparellat_amb_id: string | null;
 }
 
 function rowToMoviment(row: MovimentRow): Moviment {
@@ -95,8 +84,6 @@ function rowToMoviment(row: MovimentRow): Moviment {
     seq: row.seq,
     esLiquidacioTargetaId: row.es_liquidacio_targeta_id ?? undefined,
     movimentOrigenId: row.moviment_origen_id ?? undefined,
-    esLiquidacioDirecta: row.es_liquidacio_directa === 1,
-    aparellatAmbId: row.aparellat_amb_id ?? undefined,
   };
 }
 
@@ -130,10 +117,6 @@ function rowToRegla(row: { id: string; patro: string; categoria_id: string; prio
 
 function rowToReglaLiquidacio(row: { id: string; patro: string; targeta_compte_id: string }): ReglaLiquidacioTargeta {
   return { id: row.id, patro: row.patro, targetaCompteId: row.targeta_compte_id };
-}
-
-function rowToReglaLiquidacioDirecta(row: { id: string; patro: string }): ReglaLiquidacioDirecta {
-  return { id: row.id, patro: row.patro };
 }
 
 function seguentSeq(db: DatabaseSync): number {
@@ -335,10 +318,6 @@ export function commitImport(compte: Compte, moviments: ParsedMoviment[], fitxer
 export function undoLot(lotId: string): void {
   const db = getDb();
   transaction(db, () => {
-    const idsEliminats = (db.prepare('SELECT id FROM moviments WHERE lot_importacio_id = ?').all(lotId) as { id: string }[]).map(
-      (r) => r.id,
-    );
-    desaparellaLiquidacioDirectaPerEliminacio(db, idsEliminats);
     db.prepare('DELETE FROM moviments WHERE lot_importacio_id = ?').run(lotId);
     db.prepare('DELETE FROM lots WHERE id = ?').run(lotId);
   });
@@ -638,14 +617,10 @@ export function marcaLiquidacioTargeta(movimentCorrentId: string, targetaCompteI
       )
       .get(targetaCompteId, movimentCorrentId, moviment.dataOperacio) as { data_operacio: string } | undefined;
     const desDe = anterior?.data_operacio ?? '0000-00-00';
-    // Els moviments de liquidació directa (p. ex. retirades d'efectiu en
-    // caixer) es cobren directament al compte corrent i mai entren a la
-    // liquidació mensual — cal excloure'ls de la suma esperada perquè no
-    // trenquin la quadratura (especificacio.md 3.2.1).
     const { suma } = db
       .prepare(
         `SELECT COALESCE(SUM(import_cents), 0) AS suma FROM moviments
-         WHERE compte_id = ? AND moviment_origen_id IS NULL AND es_liquidacio_directa = 0 AND data_operacio > ? AND data_operacio <= ?`,
+         WHERE compte_id = ? AND moviment_origen_id IS NULL AND data_operacio > ? AND data_operacio <= ?`,
       )
       .get(targetaCompteId, desDe, moviment.dataOperacio) as { suma: number };
 
@@ -694,207 +669,6 @@ export function marcaLiquidacioTargeta(movimentCorrentId: string, targetaCompteI
   return resultat;
 }
 
-// --- Liquidacions directes de targeta (especificacio.md 3.2.1) ---
-//
-// Alguns moviments de targeta (típicament retirades d'efectiu en caixer) es
-// cobren directament al compte corrent en lloc d'entrar a la liquidació
-// mensual. Si es deixessin tal qual, la despesa es comptaria dues vegades
-// (un cop a l'extracte de la targeta, un altre al del compte corrent) i la
-// quadratura de la liquidació mensual no coincidiria mai. Marcar el moviment
-// de targeta com a "liquidació directa" i aparellar-lo amb el càrrec del
-// compte corrent resol totes dues coses: la targeta queda exclosa dels
-// agregats (es_transferencia_interna=1) i el càrrec del compte corrent
-// és qui compta la despesa, amb la categoria per defecte "Efectiu retirat".
-
-const CATEGORIA_EFECTIU_RETIRAT_NOM = 'Efectiu retirat';
-
-/** Cerca la categoria "Efectiu retirat" pel nom (mai per un id fix, perquè sobrevisqui a un reinicialitzaBaseDades) i la crea si no existeix encara. */
-function obteOCreaCategoriaEfectiuRetirat(db: DatabaseSync): string {
-  const existent = db.prepare('SELECT id FROM categories WHERE nom = ?').get(CATEGORIA_EFECTIU_RETIRAT_NOM) as
-    | { id: string }
-    | undefined;
-  if (existent) return existent.id;
-  const id = randomUUID();
-  db.prepare('INSERT INTO categories (id, nom) VALUES (?, ?)').run(id, CATEGORIA_EFECTIU_RETIRAT_NOM);
-  return id;
-}
-
-export function listReglesLiquidacioDirecta(): ReglaLiquidacioDirecta[] {
-  return (getDb().prepare('SELECT * FROM regles_liquidacio_directa').all() as { id: string; patro: string }[]).map(
-    rowToReglaLiquidacioDirecta,
-  );
-}
-
-export function createReglaLiquidacioDirecta(patro: string): ReglaLiquidacioDirecta {
-  const regla: ReglaLiquidacioDirecta = { id: randomUUID(), patro };
-  getDb().prepare('INSERT INTO regles_liquidacio_directa (id, patro) VALUES (?, ?)').run(regla.id, regla.patro);
-  return regla;
-}
-
-export function deleteReglaLiquidacioDirecta(id: string): void {
-  getDb().prepare('DELETE FROM regles_liquidacio_directa WHERE id = ?').run(id);
-}
-
-function tipusCompte(db: DatabaseSync, compteId: string): string | undefined {
-  const row = db.prepare('SELECT tipus FROM comptes WHERE id = ?').get(compteId) as { tipus: string } | undefined;
-  return row?.tipus;
-}
-
-/** Proposa, per a cada moviment de targeta encara sense marcar, si sembla una retirada d'efectiu segons les regles configurades — per confirmar manualment. */
-export function suggereixMarcatgeLiquidacioDirecta(): Moviment[] {
-  const regles = listReglesLiquidacioDirecta();
-  if (regles.length === 0) return [];
-  const rows = getDb()
-    .prepare(
-      `SELECT m.* FROM moviments m
-       JOIN comptes c ON c.id = m.compte_id
-       WHERE c.tipus = 'targeta' AND m.es_liquidacio_directa = 0 AND m.moviment_origen_id IS NULL`,
-    )
-    .all() as unknown as MovimentRow[];
-
-  return rows.map(rowToMoviment).filter((m) => esRetiradaEfectiu(m.concepteNormalitzat, regles));
-}
-
-/** Desfà l'aparellament (si n'hi ha) i restaura el moviment de targeta com a despesa normal, sense obrir la seva pròpia transacció. */
-function desaparellaLiquidacioDirectaSenseTransaccio(db: DatabaseSync, targetaMovimentId: string): void {
-  const moviment = obteMoviment(db, targetaMovimentId);
-  if (!moviment?.aparellatAmbId) return;
-  db.prepare('UPDATE moviments SET aparellat_amb_id = NULL WHERE id = ?').run(moviment.aparellatAmbId);
-  db.prepare('UPDATE moviments SET aparellat_amb_id = NULL, es_transferencia_interna = 0 WHERE id = ?').run(targetaMovimentId);
-}
-
-/**
- * Marca (o desmarca) manualment un moviment de targeta com a liquidació
- * directa (especificacio.md 3.2.1 punt 1). Desmarcar-lo mentre està
- * aparellat desfà també l'aparellament, perquè no quedi un moviment de
- * compte corrent penjat d'una liquidació directa que ja no existeix.
- */
-export function marcaEsLiquidacioDirecta(movimentId: string, value: boolean): void {
-  const db = getDb();
-  const moviment = obteMoviment(db, movimentId);
-  if (!moviment) {
-    throw new Error('El moviment indicat no existeix.');
-  }
-  if (tipusCompte(db, moviment.compteId) !== 'targeta') {
-    throw new Error("Només es pot marcar com a liquidació directa un moviment d'una targeta.");
-  }
-
-  backupDbFile();
-  transaction(db, () => {
-    if (!value) desaparellaLiquidacioDirectaSenseTransaccio(db, movimentId);
-    db.prepare('UPDATE moviments SET es_liquidacio_directa = ? WHERE id = ?').run(value ? 1 : 0, movimentId);
-  });
-}
-
-export interface SuggerimentAparellamentAmbDetall {
-  movimentTargeta: Moviment;
-  movimentCorrent: Moviment;
-}
-
-/** Proposa aparellar cada moviment de targeta marcat com a liquidació directa i encara no aparellat amb el càrrec corresponent del seu compte corrent associat (compteLiquidacioId). */
-export function suggereixAparellamentsDirectes(): SuggerimentAparellamentAmbDetall[] {
-  const db = getDb();
-  const targetes = (db.prepare("SELECT id, compte_liquidacio_id FROM comptes WHERE tipus = 'targeta'").all() as {
-    id: string;
-    compte_liquidacio_id: string | null;
-  }[]).filter((t) => t.compte_liquidacio_id);
-
-  const suggeriments: SuggerimentAparellamentAmbDetall[] = [];
-  for (const t of targetes) {
-    const movimentsTargeta = (
-      db
-        .prepare(
-          `SELECT * FROM moviments WHERE compte_id = ? AND es_liquidacio_directa = 1 AND aparellat_amb_id IS NULL`,
-        )
-        .all(t.id) as unknown as MovimentRow[]
-    ).map(rowToMoviment);
-    if (movimentsTargeta.length === 0) continue;
-
-    const movimentsCorrent = (
-      db
-        .prepare(
-          `SELECT * FROM moviments WHERE compte_id = ? AND aparellat_amb_id IS NULL AND moviment_origen_id IS NULL AND es_liquidacio_targeta_id IS NULL`,
-        )
-        .all(t.compte_liquidacio_id) as unknown as MovimentRow[]
-    ).map(rowToMoviment);
-
-    const perId = new Map([...movimentsTargeta, ...movimentsCorrent].map((m) => [m.id, m]));
-    const parelles = suggereixAparellamentsLiquidacioDirecta(movimentsTargeta, movimentsCorrent);
-    for (const p of parelles) {
-      suggeriments.push({ movimentTargeta: perId.get(p.targetaMovimentId)!, movimentCorrent: perId.get(p.correntMovimentId)! });
-    }
-  }
-  return suggeriments;
-}
-
-/**
- * Aparella un moviment de targeta marcat com a liquidació directa amb el
- * càrrec del compte corrent que la va cobrar (especificacio.md 3.2.1 punt
- * 2). Marca el moviment de targeta com a transferència interna (perquè no
- * compti dues vegades com a despesa) i assigna la categoria per defecte
- * "Efectiu retirat" al càrrec del compte corrent, que és qui compta la
- * despesa real. Idempotent: tornar a aparellar el mateix parell només
- * actualitza les mateixes columnes, no crea res nou.
- */
-export function aparellaLiquidacioDirecta(targetaMovimentId: string, correntMovimentId: string): void {
-  const db = getDb();
-  const movimentTargeta = obteMoviment(db, targetaMovimentId);
-  const movimentCorrent = obteMoviment(db, correntMovimentId);
-  if (!movimentTargeta || !movimentCorrent) {
-    throw new Error('Algun dels moviments indicats no existeix.');
-  }
-  if (tipusCompte(db, movimentTargeta.compteId) !== 'targeta' || !movimentTargeta.esLiquidacioDirecta) {
-    throw new Error("El primer moviment ha de ser un moviment de targeta marcat com a liquidació directa.");
-  }
-  if (tipusCompte(db, movimentCorrent.compteId) !== 'corrent') {
-    throw new Error("El segon moviment ha de ser d'un compte corrent.");
-  }
-
-  backupDbFile();
-  transaction(db, () => {
-    desaparellaLiquidacioDirectaSenseTransaccio(db, targetaMovimentId);
-    const categoriaEfectiuId = obteOCreaCategoriaEfectiuRetirat(db);
-    db.prepare('UPDATE moviments SET aparellat_amb_id = ?, es_transferencia_interna = 1 WHERE id = ?').run(
-      correntMovimentId,
-      targetaMovimentId,
-    );
-    db.prepare('UPDATE moviments SET aparellat_amb_id = ?, categoria_id = ? WHERE id = ?').run(
-      targetaMovimentId,
-      categoriaEfectiuId,
-      correntMovimentId,
-    );
-  });
-}
-
-/** Desfà manualment un aparellament de liquidació directa, sense desmarcar el moviment de targeta com a liquidació directa (torna a quedar disponible per aparellar-lo de nou). */
-export function desaparellaLiquidacioDirecta(targetaMovimentId: string): void {
-  const db = getDb();
-  backupDbFile();
-  transaction(db, () => desaparellaLiquidacioDirectaSenseTransaccio(db, targetaMovimentId));
-}
-
-/**
- * Quan s'esborren moviments (desfer un lot), si algun tenia un aparellament
- * de liquidació directa amb un moviment que sobreviu, cal netejar la
- * referència penjada del supervivent — i si el supervivent és el costat de
- * la targeta, restaurar-lo com a despesa normal, ja que el càrrec del
- * compte corrent que la comptava ha desaparegut.
- */
-function desaparellaLiquidacioDirectaPerEliminacio(db: DatabaseSync, idsEliminats: string[]): void {
-  if (idsEliminats.length === 0) return;
-  const placeholders = idsEliminats.map(() => '?').join(', ');
-  const supervivents = db
-    .prepare(`SELECT id, compte_id FROM moviments WHERE aparellat_amb_id IN (${placeholders}) AND id NOT IN (${placeholders})`)
-    .all(...idsEliminats, ...idsEliminats) as { id: string; compte_id: string }[];
-  for (const s of supervivents) {
-    if (tipusCompte(db, s.compte_id) === 'targeta') {
-      db.prepare('UPDATE moviments SET aparellat_amb_id = NULL, es_transferencia_interna = 0 WHERE id = ?').run(s.id);
-    } else {
-      db.prepare('UPDATE moviments SET aparellat_amb_id = NULL WHERE id = ?').run(s.id);
-    }
-  }
-}
-
 // --- Còpia de seguretat (NFR secció 2) ---
 
 export interface Backup {
@@ -906,7 +680,6 @@ export interface Backup {
   categories: Categoria[];
   regles: ReglaCategoritzacio[];
   reglesLiquidacio: ReglaLiquidacioTargeta[];
-  reglesLiquidacioDirecta: ReglaLiquidacioDirecta[];
 }
 
 export function exportaCopiaSeguretat(): Backup {
@@ -919,7 +692,6 @@ export function exportaCopiaSeguretat(): Backup {
     categories: (getDb().prepare('SELECT * FROM categories').all() as { id: string; nom: string }[]).map(rowToCategoria),
     regles: listRegles(),
     reglesLiquidacio: listReglesLiquidacio(),
-    reglesLiquidacioDirecta: listReglesLiquidacioDirecta(),
   };
 }
 
@@ -929,7 +701,7 @@ export function importaCopiaSeguretat(backup: Backup): void {
   const db = getDb();
   transaction(db, () => {
     db.exec(
-      'DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM regles_liquidacio_directa; DELETE FROM categories; DELETE FROM comptes;',
+      'DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM categories; DELETE FROM comptes;',
     );
 
     const insertCompte = db.prepare(
@@ -959,17 +731,13 @@ export function importaCopiaSeguretat(backup: Backup): void {
     // `reglesLiquidacio` no existia en còpies de seguretat anteriors a aquesta funcionalitat.
     for (const r of backup.reglesLiquidacio ?? []) insertReglaLiquidacio.run(r.id, r.patro, r.targetaCompteId);
 
-    const insertReglaLiquidacioDirecta = db.prepare('INSERT INTO regles_liquidacio_directa (id, patro) VALUES (?, ?)');
-    // `reglesLiquidacioDirecta` no existia en còpies de seguretat anteriors a aquesta funcionalitat.
-    for (const r of backup.reglesLiquidacioDirecta ?? []) insertReglaLiquidacioDirecta.run(r.id, r.patro);
-
     const insertLot = db.prepare('INSERT INTO lots (id, data, fitxer_origen, banc, compte_id, nombre_moviments) VALUES (?, ?, ?, ?, ?, ?)');
     for (const l of backup.lots) insertLot.run(l.id, l.data, l.fitxerOrigen, l.banc, l.compteId, l.nombreMoviments);
 
     const insertMoviment = db.prepare(
       `INSERT INTO moviments
-        (id, compte_id, data_operacio, data_valor, concepte_original, concepte_normalitzat, import_cents, saldo_posterior_cents, categoria_id, lot_importacio_id, es_transferencia_interna, seq, es_liquidacio_targeta_id, moviment_origen_id, es_liquidacio_directa, aparellat_amb_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, compte_id, data_operacio, data_valor, concepte_original, concepte_normalitzat, import_cents, saldo_posterior_cents, categoria_id, lot_importacio_id, es_transferencia_interna, seq, es_liquidacio_targeta_id, moviment_origen_id)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     for (const m of backup.moviments) {
       insertMoviment.run(
@@ -987,8 +755,6 @@ export function importaCopiaSeguretat(backup: Backup): void {
         m.seq,
         m.esLiquidacioTargetaId ?? null,
         m.movimentOrigenId ?? null,
-        m.esLiquidacioDirecta ? 1 : 0,
-        m.aparellatAmbId ?? null,
       );
     }
   });
@@ -1006,9 +772,7 @@ export function reinicialitzaBaseDades(): void {
   backupDbFile();
   const db = getDb();
   transaction(db, () => {
-    db.exec(
-      'DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM regles_liquidacio_directa; DELETE FROM categories; DELETE FROM comptes;',
-    );
+    db.exec('DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM categories; DELETE FROM comptes;');
     const insert = db.prepare('INSERT INTO categories (id, nom) VALUES (?, ?)');
     for (const nom of DEFAULT_CATEGORIES) insert.run(randomUUID(), nom);
   });

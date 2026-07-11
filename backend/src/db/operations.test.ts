@@ -6,16 +6,13 @@ const { getDb } = await import('./client.ts');
 const {
   actualitzaCompte,
   actualitzaRegla,
-  aparellaLiquidacioDirecta,
   commitImport,
   countMovimentsCompte,
   createCategoria,
   createCompte,
   createRegla,
   createReglaLiquidacio,
-  createReglaLiquidacioDirecta,
   deleteReglaLiquidacio,
-  desaparellaLiquidacioDirecta,
   desmarcaLiquidacioTargeta,
   eliminaCompte,
   eliminaTotsElsMoviments,
@@ -24,22 +21,18 @@ const {
   listLots,
   listMovimentsPerComptes,
   listReglesLiquidacio,
-  listReglesLiquidacioDirecta,
   listRegles,
-  marcaEsLiquidacioDirecta,
   marcaLiquidacioTargeta,
   reinicialitzaBaseDades,
   renombraCategoria,
   setMovimentCategoria,
-  suggereixAparellamentsDirectes,
   suggereixLiquidacionsTargeta,
-  suggereixMarcatgeLiquidacioDirecta,
   undoLot,
 } = await import('./operations.ts');
 
 beforeEach(() => {
   getDb().exec(
-    'DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM regles_liquidacio_directa; DELETE FROM categories; DELETE FROM comptes;',
+    'DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM categories; DELETE FROM comptes;',
   );
 });
 
@@ -377,185 +370,6 @@ describe('liquidacions de targeta (especificacio.md 3.2.1)', () => {
     eliminaCompte(targeta.id);
 
     expect(listReglesLiquidacio()).toEqual([]);
-  });
-});
-
-describe('liquidacions directes de targeta (especificacio.md 3.2.1)', () => {
-  function creaTargetaAmbCorrent() {
-    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
-    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
-    actualitzaCompte(targeta.id, { compteLiquidacioId: corrent.id });
-    return { corrent, targeta };
-  }
-
-  it('createReglaLiquidacioDirecta / listReglesLiquidacioDirecta / deleteReglaLiquidacioDirecta round-trip', () => {
-    const regla = createReglaLiquidacioDirecta('CAJERO');
-    expect(listReglesLiquidacioDirecta()).toEqual([regla]);
-    createReglaLiquidacioDirecta('  ');
-
-    const { id } = regla;
-    expect(listReglesLiquidacioDirecta().map((r) => r.patro)).toContain('CAJERO');
-
-    createReglaLiquidacioDirecta('REINTEGRO');
-    expect(listReglesLiquidacioDirecta()).toHaveLength(3);
-
-    listReglesLiquidacioDirecta()
-      .filter((r) => r.id !== id)
-      .forEach((r) => expect(r.patro === 'REINTEGRO' || r.patro.trim() === '').toBe(true));
-  });
-
-  it('suggereixMarcatgeLiquidacioDirecta proposes unmarked card movements matching a configured pattern, from targeta accounts only', () => {
-    const { corrent, targeta } = creaTargetaAmbCorrent();
-    createReglaLiquidacioDirecta('RETIRADA EFECTIVO');
-    commitImport(targeta, [mov('2026-06-10', 'RETIRADA EFECTIVO CAJERO', -20000), mov('2026-06-11', 'BON AREA', -1500)], 'targeta.txt');
-    commitImport(corrent, [mov('2026-06-11', 'RETIRADA EFECTIVO CAJERO', -20000)], 'corrent.txt');
-
-    const suggeriments = suggereixMarcatgeLiquidacioDirecta();
-    expect(suggeriments).toHaveLength(1);
-    expect(suggeriments[0].compteId).toBe(targeta.id);
-    expect(suggeriments[0].concepteOriginal).toBe('RETIRADA EFECTIVO CAJERO');
-  });
-
-  it('marcaEsLiquidacioDirecta refuses a movement that does not belong to a targeta account', () => {
-    const { corrent } = creaTargetaAmbCorrent();
-    commitImport(corrent, [mov('2026-06-10', 'TEST', -1000)], 'corrent.txt');
-    const [moviment] = listMovimentsPerComptes([corrent.id]);
-    expect(() => marcaEsLiquidacioDirecta(moviment.id, true)).toThrow();
-  });
-
-  it('marcaEsLiquidacioDirecta toggles the flag, and unmarking a paired movement also unpairs it', () => {
-    const { corrent, targeta } = creaTargetaAmbCorrent();
-    commitImport(targeta, [mov('2026-06-10', 'RETIRADA EFECTIVO', -20000)], 'targeta.txt');
-    commitImport(corrent, [mov('2026-06-11', 'RETIRADA EFECTIVO', -20000)], 'corrent.txt');
-    const [movTargeta] = listMovimentsPerComptes([targeta.id]);
-    const [movCorrent] = listMovimentsPerComptes([corrent.id]);
-
-    marcaEsLiquidacioDirecta(movTargeta.id, true);
-    expect(listMovimentsPerComptes([targeta.id])[0].esLiquidacioDirecta).toBe(true);
-
-    aparellaLiquidacioDirecta(movTargeta.id, movCorrent.id);
-    expect(listMovimentsPerComptes([targeta.id])[0].aparellatAmbId).toBe(movCorrent.id);
-
-    marcaEsLiquidacioDirecta(movTargeta.id, false);
-    const [targetaDesmarcada] = listMovimentsPerComptes([targeta.id]);
-    expect(targetaDesmarcada.esLiquidacioDirecta).toBe(false);
-    expect(targetaDesmarcada.aparellatAmbId).toBeUndefined();
-    expect(targetaDesmarcada.esTransferenciaInterna).toBe(false);
-    expect(listMovimentsPerComptes([corrent.id])[0].aparellatAmbId).toBeUndefined();
-  });
-
-  it('suggereixAparellamentsDirectes proposes pairing a marked card withdrawal with the matching charge on its linked corrent account', () => {
-    const { corrent, targeta } = creaTargetaAmbCorrent();
-    commitImport(targeta, [mov('2026-06-10', 'RETIRADA EFECTIVO', -20000)], 'targeta.txt');
-    commitImport(corrent, [mov('2026-06-11', 'RETIRADA EFECTIVO', -20000)], 'corrent.txt');
-    const [movTargeta] = listMovimentsPerComptes([targeta.id]);
-    const [movCorrent] = listMovimentsPerComptes([corrent.id]);
-    marcaEsLiquidacioDirecta(movTargeta.id, true);
-
-    const suggeriments = suggereixAparellamentsDirectes();
-    expect(suggeriments).toEqual([{ movimentTargeta: expect.objectContaining({ id: movTargeta.id }), movimentCorrent: expect.objectContaining({ id: movCorrent.id }) }]);
-  });
-
-  it('aparellaLiquidacioDirecta marks only the card side as an internal transfer and assigns "Efectiu retirat" to the corrent charge', () => {
-    const { corrent, targeta } = creaTargetaAmbCorrent();
-    commitImport(targeta, [mov('2026-06-10', 'RETIRADA EFECTIVO', -20000)], 'targeta.txt');
-    commitImport(corrent, [mov('2026-06-11', 'RETIRADA EFECTIVO', -20000)], 'corrent.txt');
-    const [movTargeta] = listMovimentsPerComptes([targeta.id]);
-    const [movCorrent] = listMovimentsPerComptes([corrent.id]);
-    marcaEsLiquidacioDirecta(movTargeta.id, true);
-
-    aparellaLiquidacioDirecta(movTargeta.id, movCorrent.id);
-
-    const [targetaAparellada] = listMovimentsPerComptes([targeta.id]);
-    const [correntAparellat] = listMovimentsPerComptes([corrent.id]);
-    expect(targetaAparellada.aparellatAmbId).toBe(movCorrent.id);
-    expect(targetaAparellada.esTransferenciaInterna).toBe(true);
-    expect(correntAparellat.aparellatAmbId).toBe(movTargeta.id);
-    expect(correntAparellat.esTransferenciaInterna).toBe(false);
-    const categoriaEfectiu = listCategories().find((c) => c.nom === 'Efectiu retirat')!;
-    expect(correntAparellat.categoriaId).toBe(categoriaEfectiu.id);
-  });
-
-  it('aparellaLiquidacioDirecta refuses a targeta movement not marked as liquidació directa', () => {
-    const { corrent, targeta } = creaTargetaAmbCorrent();
-    commitImport(targeta, [mov('2026-06-10', 'BON AREA', -2000)], 'targeta.txt');
-    commitImport(corrent, [mov('2026-06-11', 'BON AREA', -2000)], 'corrent.txt');
-    const [movTargeta] = listMovimentsPerComptes([targeta.id]);
-    const [movCorrent] = listMovimentsPerComptes([corrent.id]);
-    expect(() => aparellaLiquidacioDirecta(movTargeta.id, movCorrent.id)).toThrow();
-  });
-
-  it('desaparellaLiquidacioDirecta unpairs both sides and keeps the corrent category untouched, without unmarking the card movement', () => {
-    const { corrent, targeta } = creaTargetaAmbCorrent();
-    commitImport(targeta, [mov('2026-06-10', 'RETIRADA EFECTIVO', -20000)], 'targeta.txt');
-    commitImport(corrent, [mov('2026-06-11', 'RETIRADA EFECTIVO', -20000)], 'corrent.txt');
-    const [movTargeta] = listMovimentsPerComptes([targeta.id]);
-    const [movCorrent] = listMovimentsPerComptes([corrent.id]);
-    marcaEsLiquidacioDirecta(movTargeta.id, true);
-    aparellaLiquidacioDirecta(movTargeta.id, movCorrent.id);
-
-    desaparellaLiquidacioDirecta(movTargeta.id);
-
-    const [targetaDesaparellada] = listMovimentsPerComptes([targeta.id]);
-    expect(targetaDesaparellada.aparellatAmbId).toBeUndefined();
-    expect(targetaDesaparellada.esTransferenciaInterna).toBe(false);
-    expect(targetaDesaparellada.esLiquidacioDirecta).toBe(true);
-    const [correntDesaparellat] = listMovimentsPerComptes([corrent.id]);
-    expect(correntDesaparellat.aparellatAmbId).toBeUndefined();
-    expect(correntDesaparellat.categoriaId).toBeDefined();
-  });
-
-  it('excludes liquidació directa movements from the monthly settlement quadratura', () => {
-    const { corrent, targeta } = creaTargetaAmbCorrent();
-    commitImport(
-      targeta,
-      [mov('2026-06-01', 'BON AREA', -6000), mov('2026-06-02', 'RETIRADA EFECTIVO', -20000)],
-      'targeta.txt',
-    );
-    commitImport(corrent, [mov('2026-06-03', 'RETIRADA EFECTIVO', -20000), mov('2026-06-05', 'LIQUIDACION TARJETA', -6000)], 'corrent.txt');
-    const [movTargetaRetirada] = listMovimentsPerComptes([targeta.id]).filter((m) => m.concepteOriginal === 'RETIRADA EFECTIVO');
-    const movCorrentRetirada = listMovimentsPerComptes([corrent.id]).find((m) => m.concepteOriginal === 'RETIRADA EFECTIVO')!;
-    marcaEsLiquidacioDirecta(movTargetaRetirada.id, true);
-    aparellaLiquidacioDirecta(movTargetaRetirada.id, movCorrentRetirada.id);
-
-    const carrecLiquidacio = listMovimentsPerComptes([corrent.id]).find((m) => m.concepteOriginal === 'LIQUIDACION TARJETA')!;
-    const { quadratura } = marcaLiquidacioTargeta(carrecLiquidacio.id, targeta.id);
-
-    expect(quadratura).toEqual({ esperatCents: 6000, obtingutCents: 6000, diferenciaCents: 0 });
-  });
-
-  it('undoing the lot of the corrent charge unpairs and restores the surviving card movement as a normal expense', () => {
-    const { corrent, targeta } = creaTargetaAmbCorrent();
-    commitImport(targeta, [mov('2026-06-10', 'RETIRADA EFECTIVO', -20000)], 'targeta.txt');
-    const { lot } = commitImport(corrent, [mov('2026-06-11', 'RETIRADA EFECTIVO', -20000)], 'corrent.txt');
-    const [movTargeta] = listMovimentsPerComptes([targeta.id]);
-    const [movCorrent] = listMovimentsPerComptes([corrent.id]);
-    marcaEsLiquidacioDirecta(movTargeta.id, true);
-    aparellaLiquidacioDirecta(movTargeta.id, movCorrent.id);
-
-    undoLot(lot.id);
-
-    expect(listMovimentsPerComptes([corrent.id])).toHaveLength(0);
-    const [targetaSuperviventt] = listMovimentsPerComptes([targeta.id]);
-    expect(targetaSuperviventt.aparellatAmbId).toBeUndefined();
-    expect(targetaSuperviventt.esTransferenciaInterna).toBe(false);
-    expect(targetaSuperviventt.esLiquidacioDirecta).toBe(true);
-  });
-
-  it('undoing the lot of the card withdrawal unpairs the surviving corrent charge', () => {
-    const { corrent, targeta } = creaTargetaAmbCorrent();
-    const { lot } = commitImport(targeta, [mov('2026-06-10', 'RETIRADA EFECTIVO', -20000)], 'targeta.txt');
-    commitImport(corrent, [mov('2026-06-11', 'RETIRADA EFECTIVO', -20000)], 'corrent.txt');
-    const [movTargeta] = listMovimentsPerComptes([targeta.id]);
-    const [movCorrent] = listMovimentsPerComptes([corrent.id]);
-    marcaEsLiquidacioDirecta(movTargeta.id, true);
-    aparellaLiquidacioDirecta(movTargeta.id, movCorrent.id);
-
-    undoLot(lot.id);
-
-    expect(listMovimentsPerComptes([targeta.id])).toHaveLength(0);
-    const [correntSupervivent] = listMovimentsPerComptes([corrent.id]);
-    expect(correntSupervivent.aparellatAmbId).toBeUndefined();
   });
 });
 

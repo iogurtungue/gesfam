@@ -12,11 +12,9 @@ import type {
   Moviment,
   ParsedMoviment,
   ReglaCategoritzacio,
-  ReglaLiquidacioDirecta,
   ReglaLiquidacioTargeta,
   ResultatMarcaLiquidacio,
   SuggerimentAmbDetall,
-  SuggerimentAparellamentDirecte,
   SuggerimentLiquidacio,
   SuggerimentTransferencia,
 } from './types';
@@ -173,40 +171,6 @@ export function marcaLiquidacioTargeta(movimentId: string, targetaCompteId: stri
 
 export function desmarcaLiquidacioTargeta(movimentId: string): Promise<void> {
   return req('/liquidacions/desmarca', { method: 'POST', ...json({ movimentId }) });
-}
-
-// --- Liquidacions directes de targeta (especificacio.md 3.2.1) ---
-
-export function listReglesLiquidacioDirecta(): Promise<ReglaLiquidacioDirecta[]> {
-  return req('/liquidacions-directes/regles');
-}
-
-export function createReglaLiquidacioDirecta(patro: string): Promise<ReglaLiquidacioDirecta> {
-  return req('/liquidacions-directes/regles', { method: 'POST', ...json({ patro }) });
-}
-
-export function deleteReglaLiquidacioDirecta(id: string): Promise<void> {
-  return req(`/liquidacions-directes/regles/${id}`, { method: 'DELETE' });
-}
-
-export function suggereixMarcatgeLiquidacioDirecta(): Promise<Moviment[]> {
-  return req('/liquidacions-directes/suggeriments-marcatge');
-}
-
-export function marcaEsLiquidacioDirecta(movimentId: string, value: boolean): Promise<void> {
-  return req('/liquidacions-directes/marca', { method: 'POST', ...json({ movimentId, value }) });
-}
-
-export function suggereixAparellamentsDirectes(): Promise<SuggerimentAparellamentDirecte[]> {
-  return req('/liquidacions-directes/suggeriments-aparellament');
-}
-
-export function aparellaLiquidacioDirecta(targetaMovimentId: string, correntMovimentId: string): Promise<void> {
-  return req('/liquidacions-directes/aparella', { method: 'POST', ...json({ targetaMovimentId, correntMovimentId }) });
-}
-
-export function desaparellaLiquidacioDirecta(targetaMovimentId: string): Promise<void> {
-  return req('/liquidacions-directes/desaparella', { method: 'POST', ...json({ targetaMovimentId }) });
 }
 
 // --- Còpia de seguretat ---

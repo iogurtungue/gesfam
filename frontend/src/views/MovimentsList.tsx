@@ -3,31 +3,18 @@ import { creaConsultaSaldo } from '../lib/balance';
 import { avui, formatDateEs } from '../lib/dates';
 import { centsToEs } from '../lib/numbers';
 import {
-  aparellaLiquidacioDirecta,
   aplicaReglesAMovimentsSenseCategoria,
   confirmaTransferencia,
   createRegla,
-  desaparellaLiquidacioDirecta,
   desmarcaLiquidacioTargeta,
   listMovimentsPerComptes,
-  marcaEsLiquidacioDirecta,
   marcaLiquidacioTargeta,
   setMovimentCategoria,
   setTransferenciaInterna,
-  suggereixAparellamentsDirectes,
   suggereixLiquidacionsTargeta,
-  suggereixMarcatgeLiquidacioDirecta,
   suggereixTransferencies,
 } from '../api/client';
-import type {
-  Categoria,
-  Compte,
-  Moviment,
-  ReglaCategoritzacio,
-  SuggerimentAmbDetall,
-  SuggerimentAparellamentDirecte,
-  SuggerimentLiquidacio,
-} from '../api/types';
+import type { Categoria, Compte, Moviment, ReglaCategoritzacio, SuggerimentAmbDetall, SuggerimentLiquidacio } from '../api/types';
 
 type FiltreTipus = 'tots' | 'ingres' | 'carrec';
 type CampOrdre = 'dataOperacio' | 'concepteOriginal';
@@ -66,11 +53,6 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
   const [seleccioLiquidacio, setSeleccioLiquidacio] = useState<Record<string, string>>({});
   const [avisQuadratura, setAvisQuadratura] = useState<string | null>(null);
   const [errorLiquidacio, setErrorLiquidacio] = useState<string | null>(null);
-  const [suggerimentsMarcatgeDirecte, setSuggerimentsMarcatgeDirecte] = useState<Moviment[]>([]);
-  const [suggerimentsAparellamentDirecte, setSuggerimentsAparellamentDirecte] = useState<SuggerimentAparellamentDirecte[]>([]);
-  const [aparellantManualment, setAparellantManualment] = useState<string | null>(null);
-  const [candidatManual, setCandidatManual] = useState('');
-  const [errorLiquidacioDirecta, setErrorLiquidacioDirecta] = useState<string | null>(null);
 
   const compteIds = seleccionats.map((c) => c.id).join(',');
   const compteAlias = useMemo(() => {
@@ -100,8 +82,6 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
     listMovimentsPerComptes(seleccionats.map((c) => c.id)).then(setMoviments);
     suggereixTransferencies().then(setSuggeriments);
     suggereixLiquidacionsTargeta().then(setSuggerimentsLiquidacio);
-    suggereixMarcatgeLiquidacioDirecta().then(setSuggerimentsMarcatgeDirecte);
-    suggereixAparellamentsDirectes().then(setSuggerimentsAparellamentDirecte);
   }
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -226,110 +206,10 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
     }
   }
 
-  async function handleMarcaDirecta(movimentId: string) {
-    setErrorLiquidacioDirecta(null);
-    try {
-      await marcaEsLiquidacioDirecta(movimentId, true);
-      setSuggerimentsMarcatgeDirecte((prev) => prev.filter((m) => m.id !== movimentId));
-      refresh();
-    } catch (err) {
-      setErrorLiquidacioDirecta((err as Error).message);
-    }
-  }
-
-  async function handleDesmarcaDirecta(movimentId: string) {
-    setErrorLiquidacioDirecta(null);
-    try {
-      await marcaEsLiquidacioDirecta(movimentId, false);
-      refresh();
-    } catch (err) {
-      setErrorLiquidacioDirecta((err as Error).message);
-    }
-  }
-
-  async function handleAparellaDirecta(targetaMovimentId: string, correntMovimentId: string) {
-    if (!correntMovimentId) return;
-    setErrorLiquidacioDirecta(null);
-    try {
-      await aparellaLiquidacioDirecta(targetaMovimentId, correntMovimentId);
-      setSuggerimentsAparellamentDirecte((prev) => prev.filter((s) => s.movimentTargeta.id !== targetaMovimentId));
-      tancaAparellamentManual();
-      refresh();
-    } catch (err) {
-      setErrorLiquidacioDirecta((err as Error).message);
-    }
-  }
-
-  async function handleDesaparellaDirecta(targetaMovimentId: string) {
-    setErrorLiquidacioDirecta(null);
-    try {
-      await desaparellaLiquidacioDirecta(targetaMovimentId);
-      refresh();
-    } catch (err) {
-      setErrorLiquidacioDirecta((err as Error).message);
-    }
-  }
-
-  function obreAparellamentManual(movimentId: string) {
-    setAparellantManualment(movimentId);
-    setCandidatManual('');
-  }
-
-  function tancaAparellamentManual() {
-    setAparellantManualment(null);
-    setCandidatManual('');
-  }
-
-  /** Candidats per aparellar manualment un moviment de targeta: moviments del seu compte corrent associat, encara sense aparellar, ordenats pel dia més proper. Necessita que aquell compte corrent estigui també seleccionat (només es treballa amb els moviments ja carregats). */
-  function candidatsAparellamentManual(m: Moviment): Moviment[] {
-    const compteLiquidacioId = compteById.get(m.compteId)?.compteLiquidacioId;
-    if (!compteLiquidacioId) return [];
-    const diesEntre = (a: string, b: string) => Math.abs(new Date(a).getTime() - new Date(b).getTime()) / 86_400_000;
-    return moviments
-      .filter((c) => c.compteId === compteLiquidacioId && !c.aparellatAmbId && !c.movimentOrigenId)
-      .sort((a, b) => diesEntre(a.dataOperacio, m.dataOperacio) - diesEntre(b.dataOperacio, m.dataOperacio));
-  }
-
-  /**
-   * Contingut de la columna "Liquidació" (especificacio.md 3.2.1): marcar/
-   * desmarcar un càrrec del compte corrent com la liquidació d'una targeta,
-   * o bé (per a moviments de targeta) marcar-lo com a liquidació directa
-   * (p. ex. retirada d'efectiu) i aparellar-lo amb el càrrec corresponent
-   * del compte corrent. No aplicable a les contrapartides automàtiques.
-   */
+  /** Contingut de la columna "Liquidació" (especificacio.md 3.2.1): marcar/desmarcar un càrrec del compte corrent com la liquidació d'una targeta. No aplicable a moviments de targeta ni a les seves contrapartides automàtiques. */
   function cellaLiquidacio(m: Moviment) {
     if (m.movimentOrigenId) {
       return <span title="Contrapartida automàtica d'una liquidació de targeta">contrapartida</span>;
-    }
-    if (compteById.get(m.compteId)?.tipus === 'targeta') {
-      if (m.aparellatAmbId) {
-        return (
-          <>
-            aparellat{' '}
-            <button onClick={() => handleDesaparellaDirecta(m.id)} title="Desaparella la liquidació directa">
-              D
-            </button>
-          </>
-        );
-      }
-      if (!m.esLiquidacioDirecta) {
-        return (
-          <button onClick={() => handleMarcaDirecta(m.id)} title="Marca com a liquidació directa (p. ex. retirada d'efectiu)">
-            E
-          </button>
-        );
-      }
-      return (
-        <>
-          efectiu{' '}
-          <button onClick={() => obreAparellamentManual(m.id)} title="Aparella manualment amb el càrrec del compte corrent">
-            P
-          </button>{' '}
-          <button onClick={() => handleDesmarcaDirecta(m.id)} title="Desmarca com a liquidació directa">
-            D
-          </button>
-        </>
-      );
     }
     if (compteById.get(m.compteId)?.tipus !== 'corrent') return null;
     if (m.esLiquidacioTargetaId) {
@@ -400,44 +280,12 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
         </div>
       )}
 
-      {suggerimentsMarcatgeDirecte.length > 0 && (
-        <div style={{ border: '1px solid #d90', padding: 8, marginBottom: 12, fontSize: 12 }}>
-          <strong>Retirades d'efectiu suggerides (liquidació directa)</strong>
-          <ul>
-            {suggerimentsMarcatgeDirecte.map((m) => (
-              <li key={m.id}>
-                {formatDateEs(m.dataOperacio)} — {compteAlias(m.compteId)}: {m.concepteOriginal} (
-                <span style={colorImport(m.importCents)}>{centsToEs(m.importCents, false)}</span>){' '}
-                <button onClick={() => handleMarcaDirecta(m.id)}>Confirmar</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {suggerimentsAparellamentDirecte.length > 0 && (
-        <div style={{ border: '1px solid #d90', padding: 8, marginBottom: 12, fontSize: 12 }}>
-          <strong>Aparellaments de liquidació directa suggerits</strong>
-          <ul>
-            {suggerimentsAparellamentDirecte.map((s) => (
-              <li key={s.movimentTargeta.id}>
-                {formatDateEs(s.movimentTargeta.dataOperacio)} — {compteAlias(s.movimentTargeta.compteId)}: {s.movimentTargeta.concepteOriginal}{' '}
-                ↔ {compteAlias(s.movimentCorrent.compteId)}: {s.movimentCorrent.concepteOriginal} (
-                <span style={colorImport(s.movimentCorrent.importCents)}>{centsToEs(s.movimentCorrent.importCents, false)}</span>){' '}
-                <button onClick={() => handleAparellaDirecta(s.movimentTargeta.id, s.movimentCorrent.id)}>Confirmar</button>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
       {avisQuadratura && (
         <p style={{ color: '#d90' }}>
           ⚠ {avisQuadratura} <button onClick={() => setAvisQuadratura(null)}>D'acord</button>
         </p>
       )}
       {errorLiquidacio && <p style={{ color: '#c00' }}>{errorLiquidacio}</p>}
-      {errorLiquidacioDirecta && <p style={{ color: '#c00' }}>{errorLiquidacioDirecta}</p>}
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <label>
@@ -605,35 +453,6 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
                         <button onClick={tancaFormRegla}>Cancel·la</button>
                       </div>
                       {errorRegla && <p style={{ color: '#c00' }}>{errorRegla}</p>}
-                    </td>
-                  </tr>
-                )}
-                {aparellantManualment === m.id && (
-                  <tr>
-                    <td colSpan={(targetes.length > 0 ? 5 : 4) + seleccionats.length * 2} style={{ ...cellStyle, background: '#f7f7f7' }}>
-                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
-                        <strong>Aparella amb el càrrec del compte corrent:</strong>
-                        {candidatsAparellamentManual(m).length === 0 ? (
-                          <span>
-                            Cap candidat carregat — selecciona també el compte corrent associat a la targeta al selector de comptes.
-                          </span>
-                        ) : (
-                          <>
-                            <select value={candidatManual} onChange={(e) => setCandidatManual(e.target.value)}>
-                              <option value="">-- Selecciona un moviment --</option>
-                              {candidatsAparellamentManual(m).map((c) => (
-                                <option key={c.id} value={c.id}>
-                                  {formatDateEs(c.dataOperacio)} — {c.concepteOriginal} ({centsToEs(c.importCents, false)})
-                                </option>
-                              ))}
-                            </select>
-                            <button onClick={() => handleAparellaDirecta(m.id, candidatManual)} disabled={!candidatManual}>
-                              Aparella
-                            </button>
-                          </>
-                        )}
-                        <button onClick={tancaAparellamentManual}>Cancel·la</button>
-                      </div>
                     </td>
                   </tr>
                 )}

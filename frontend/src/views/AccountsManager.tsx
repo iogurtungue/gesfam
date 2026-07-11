@@ -4,14 +4,11 @@ import {
   actualitzaCompte,
   countMovimentsCompte,
   createReglaLiquidacio,
-  createReglaLiquidacioDirecta,
   deleteReglaLiquidacio,
-  deleteReglaLiquidacioDirecta,
   eliminaCompte,
   listReglesLiquidacio,
-  listReglesLiquidacioDirecta,
 } from '../api/client';
-import type { AccountType, BankId, Compte, ReglaLiquidacioDirecta, ReglaLiquidacioTargeta } from '../api/types';
+import type { AccountType, BankId, Compte, ReglaLiquidacioTargeta } from '../api/types';
 
 interface Props {
   comptes: Compte[];
@@ -116,61 +113,6 @@ function ReglesLiquidacioTargeta({ comptes }: { comptes: Compte[] }) {
             </option>
           ))}
         </select>
-        <button type="submit">Afegeix regla</button>
-      </form>
-    </div>
-  );
-}
-
-/**
- * Regles per detectar automàticament, pel concepte del propi moviment de
- * targeta, si es tracta d'una retirada d'efectiu que s'ha de tractar com a
- * liquidació directa (especificacio.md 3.2.1) — no apunten a cap targeta
- * concreta, s'apliquen a totes. Les propostes de marcatge i d'aparellament
- * es confirmen a la pestanya de Moviments, aquí només es configuren els
- * patrons.
- */
-function ReglesLiquidacioDirecta({ comptes }: { comptes: Compte[] }) {
-  const [regles, setRegles] = useState<ReglaLiquidacioDirecta[]>([]);
-  const [nouPatro, setNouPatro] = useState('');
-
-  function carrega() {
-    listReglesLiquidacioDirecta().then(setRegles);
-  }
-
-  useEffect(carrega, []);
-
-  async function handleAfegeix(e: React.FormEvent) {
-    e.preventDefault();
-    if (!nouPatro.trim()) return;
-    await createReglaLiquidacioDirecta(nouPatro.trim());
-    setNouPatro('');
-    carrega();
-  }
-
-  async function handleEsborra(id: string) {
-    await deleteReglaLiquidacioDirecta(id);
-    carrega();
-  }
-
-  if (!comptes.some((c) => c.tipus === 'targeta')) return null;
-
-  return (
-    <div style={{ border: '1px solid #999', padding: 12, marginBottom: 16 }}>
-      <h3>Regles de liquidació directa (retirades d'efectiu)</h3>
-      <p>
-        Si el concepte d'un moviment de targeta conté el patró indicat, es proposa (a la pestanya de Moviments, amb confirmació) marcar-lo
-        com a liquidació directa: es cobra al compte corrent en lloc d'entrar a la liquidació mensual.
-      </p>
-      <ul>
-        {regles.map((r) => (
-          <li key={r.id}>
-            "{r.patro}" <button onClick={() => handleEsborra(r.id)}>Esborra</button>
-          </li>
-        ))}
-      </ul>
-      <form onSubmit={handleAfegeix}>
-        <input value={nouPatro} onChange={(e) => setNouPatro(e.target.value)} placeholder="p.ex. CAJERO" />
         <button type="submit">Afegeix regla</button>
       </form>
     </div>
@@ -416,7 +358,6 @@ export function AccountsManager({ comptes, onChanged }: Props) {
       </datalist>
 
       <ReglesLiquidacioTargeta comptes={comptes} />
-      <ReglesLiquidacioDirecta comptes={comptes} />
     </section>
   );
 }
