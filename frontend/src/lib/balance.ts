@@ -139,6 +139,37 @@ export function creaConsultaSaldo(moviments: MovimentPerSaldo[], tipus: AccountT
 
 export interface MovimentAcumulat extends MovimentPerSaldo {
   id: string;
+  lotImportacioId: string;
+}
+
+/**
+ * Els fitxers de targeta no porten ni saldo ni hora, només data, així que
+ * `seq` (ordre d'inserció durant la importació) és l'únic senyal disponible
+ * per desempatar moviments del mateix dia -- però `seq` només reflecteix
+ * l'ordre de les files al fitxer d'origen, i aquest ordre no és consistent:
+ * alguns extractes llisten de més recent a més antic, d'altres a l'inrevés,
+ * i el conveni pot variar fins i tot entre dos lots del mateix compte (
+ * comprovat amb dades reals). Per això la direcció es dedueix per lot,
+ * comparant el seq dels moviments de la data més antiga d'aquell lot contra
+ * els de la data més recent: si el seq puja amb la data, el lot és
+ * ascendent; si baixa, és descendent. Un lot amb una sola data no dona cap
+ * senyal i es tracta com a ascendent per defecte (no canvia res, ja que no
+ * hi ha cap altra data amb qui desempatar).
+ */
+function inferDireccioLot(moviments: { dataOperacio: string; seq: number }[]): 1 | -1 {
+  let dataMin = moviments[0].dataOperacio;
+  let dataMax = moviments[0].dataOperacio;
+  for (const m of moviments) {
+    if (m.dataOperacio < dataMin) dataMin = m.dataOperacio;
+    if (m.dataOperacio > dataMax) dataMax = m.dataOperacio;
+  }
+  if (dataMin === dataMax) return 1;
+
+  const mitjana = (data: string) => {
+    const seqs = moviments.filter((m) => m.dataOperacio === data).map((m) => m.seq);
+    return seqs.reduce((a, b) => a + b, 0) / seqs.length;
+  };
+  return mitjana(dataMax) >= mitjana(dataMin) ? 1 : -1;
 }
 
 /**
@@ -147,10 +178,28 @@ export interface MovimentAcumulat extends MovimentPerSaldo {
  * en una data" i per tant no distingeix entre diversos moviments del mateix
  * dia). Com que la suma és order-independent (veure saldoEnData), l'ordre
  * cronològic exacte dins del mateix dia només importa per decidir quin
- * valor mostrar a cada fila, no pel resultat final acumulat.
+ * valor mostrar a cada fila, no pel resultat final acumulat -- però cal
+ * encertar-lo igualment perquè els valors intermedis no semblin desordenats
+ * (veure inferDireccioLot per la direcció de desempat).
  */
 export function creaSaldoAcumulatPerMoviment(moviments: MovimentAcumulat[]): Map<string, number> {
-  const ordenats = [...moviments].sort((a, b) => a.dataOperacio.localeCompare(b.dataOperacio) || a.seq - b.seq);
+  const perLot = new Map<string, MovimentAcumulat[]>();
+  for (const m of moviments) {
+    const grup = perLot.get(m.lotImportacioId);
+    if (grup) grup.push(m);
+    else perLot.set(m.lotImportacioId, [m]);
+  }
+  const direccioPerLot = new Map<string, 1 | -1>();
+  for (const [lotId, grup] of perLot) {
+    direccioPerLot.set(lotId, inferDireccioLot(grup));
+  }
+
+  const ordenats = [...moviments].sort((a, b) => {
+    if (a.dataOperacio !== b.dataOperacio) return a.dataOperacio.localeCompare(b.dataOperacio);
+    if (a.lotImportacioId !== b.lotImportacioId) return a.seq - b.seq;
+    return (direccioPerLot.get(a.lotImportacioId) ?? 1) * (a.seq - b.seq);
+  });
+
   const resultat = new Map<string, number>();
   let acumulat = 0;
   for (const m of ordenats) {

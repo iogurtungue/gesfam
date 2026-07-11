@@ -110,9 +110,9 @@ describe('creaConsultaSaldo', () => {
 describe('creaSaldoAcumulatPerMoviment', () => {
   it('accumulates debt chronologically and keys the result by movement id', () => {
     const moviments = [
-      { id: 'a', dataOperacio: '2026-06-01', importCents: -1000, saldoPosteriorCents: null, seq: 0 },
-      { id: 'b', dataOperacio: '2026-06-05', importCents: -500, saldoPosteriorCents: null, seq: 1 },
-      { id: 'c', dataOperacio: '2026-06-10', importCents: -200, saldoPosteriorCents: null, seq: 2 },
+      { id: 'a', dataOperacio: '2026-06-01', importCents: -1000, saldoPosteriorCents: null, seq: 0, lotImportacioId: 'L1' },
+      { id: 'b', dataOperacio: '2026-06-05', importCents: -500, saldoPosteriorCents: null, seq: 1, lotImportacioId: 'L1' },
+      { id: 'c', dataOperacio: '2026-06-10', importCents: -200, saldoPosteriorCents: null, seq: 2, lotImportacioId: 'L1' },
     ];
     const saldos = creaSaldoAcumulatPerMoviment(moviments);
     expect(saldos.get('a')).toBe(-1000);
@@ -120,10 +120,10 @@ describe('creaSaldoAcumulatPerMoviment', () => {
     expect(saldos.get('c')).toBe(-1700);
   });
 
-  it('is independent of input order, using dataOperacio + seq to sequence same-day movements', () => {
-    const a = { id: 'a', dataOperacio: '2026-06-05', importCents: -100, saldoPosteriorCents: null, seq: 0 };
-    const b = { id: 'b', dataOperacio: '2026-06-05', importCents: -200, saldoPosteriorCents: null, seq: 1 };
-    const c = { id: 'c', dataOperacio: '2026-06-05', importCents: 50, saldoPosteriorCents: null, seq: 2 };
+  it('is independent of input order for an ascending lot (single-day lot defaults to ascending seq)', () => {
+    const a = { id: 'a', dataOperacio: '2026-06-05', importCents: -100, saldoPosteriorCents: null, seq: 0, lotImportacioId: 'L1' };
+    const b = { id: 'b', dataOperacio: '2026-06-05', importCents: -200, saldoPosteriorCents: null, seq: 1, lotImportacioId: 'L1' };
+    const c = { id: 'c', dataOperacio: '2026-06-05', importCents: 50, saldoPosteriorCents: null, seq: 2, lotImportacioId: 'L1' };
 
     expect(creaSaldoAcumulatPerMoviment([a, b, c])).toEqual(creaSaldoAcumulatPerMoviment([c, a, b]));
     const saldos = creaSaldoAcumulatPerMoviment([c, a, b]);
@@ -138,14 +138,55 @@ describe('creaSaldoAcumulatPerMoviment', () => {
     // after the cutoff but before the settlement date (27-2) are NOT part of
     // this settlement's billed amount, yet they must still show up as
     // pending debt afterwards, not get silently cancelled out.
-    const carrec20 = { id: 'c20', dataOperacio: '2026-06-20', importCents: -5000, saldoPosteriorCents: null, seq: 0 };
-    const carrec26 = { id: 'c26', dataOperacio: '2026-06-26', importCents: -3000, saldoPosteriorCents: null, seq: 1 };
-    const carrec27 = { id: 'c27', dataOperacio: '2026-06-27', importCents: -4000, saldoPosteriorCents: null, seq: 2 };
-    const carrec02 = { id: 'c02', dataOperacio: '2026-07-02', importCents: -2000, saldoPosteriorCents: null, seq: 3 };
+    const carrec20 = { id: 'c20', dataOperacio: '2026-06-20', importCents: -5000, saldoPosteriorCents: null, seq: 0, lotImportacioId: 'L1' };
+    const carrec26 = { id: 'c26', dataOperacio: '2026-06-26', importCents: -3000, saldoPosteriorCents: null, seq: 1, lotImportacioId: 'L1' };
+    const carrec27 = { id: 'c27', dataOperacio: '2026-06-27', importCents: -4000, saldoPosteriorCents: null, seq: 2, lotImportacioId: 'L1' };
+    const carrec02 = { id: 'c02', dataOperacio: '2026-07-02', importCents: -2000, saldoPosteriorCents: null, seq: 3, lotImportacioId: 'L1' };
     // Billed amount only covers charges up to the 26th (5000+3000=8000).
-    const contrapartida = { id: 'liq', dataOperacio: '2026-07-05', importCents: 8000, saldoPosteriorCents: null, seq: 4 };
+    const contrapartida = { id: 'liq', dataOperacio: '2026-07-05', importCents: 8000, saldoPosteriorCents: null, seq: 4, lotImportacioId: 'L1' };
 
     const saldos = creaSaldoAcumulatPerMoviment([carrec20, carrec26, carrec27, carrec02, contrapartida]);
     expect(saldos.get('liq')).toBe(-4000 + -2000); // -6000: exactly the still-unsettled 27th + 2nd charges.
+  });
+
+  it('reconstructs same-day order for a descending lot (the actual reported bug: ING-TG-JN, 27-30/11/2025)', () => {
+    // Real data: this lot lists movements from most recent date to oldest
+    // (seq goes 1110 on 27/11 down to 1106-1108 on 30/11), so ascending seq
+    // is the WRONG tie-break direction within the 30/11 group -- the file's
+    // last-listed row of that day (lowest seq) is chronologically its most
+    // recent charge, not its first.
+    const d27 = { id: '27', dataOperacio: '2025-11-27', importCents: -625, saldoPosteriorCents: null, seq: 1110, lotImportacioId: 'ing1' };
+    const d28 = { id: '28', dataOperacio: '2025-11-28', importCents: -414, saldoPosteriorCents: null, seq: 1109, lotImportacioId: 'ing1' };
+    // Within the file, 30a comes first (highest seq of the group is listed first for a descending lot... here seq 1108 is listed first, 1106 last).
+    const d30a = { id: '30a', dataOperacio: '2025-11-30', importCents: -5000, saldoPosteriorCents: null, seq: 1108, lotImportacioId: 'ing1' };
+    const d30b = { id: '30b', dataOperacio: '2025-11-30', importCents: -3000, saldoPosteriorCents: null, seq: 1107, lotImportacioId: 'ing1' };
+    const d30c = { id: '30c', dataOperacio: '2025-11-30', importCents: -2109, saldoPosteriorCents: null, seq: 1106, lotImportacioId: 'ing1' };
+
+    const saldos = creaSaldoAcumulatPerMoviment([d30c, d30b, d30a, d28, d27]);
+    expect(saldos.get('27')).toBe(-625);
+    expect(saldos.get('28')).toBe(-1039); // matches the -10,39 € the user confirmed as correct.
+    // Descending lot: within 30/11, higher seq (1108) is chronologically first.
+    expect(saldos.get('30a')).toBe(-1039 - 5000); // -6039
+    expect(saldos.get('30b')).toBe(-6039 - 3000); // -9039
+    expect(saldos.get('30c')).toBe(-9039 - 2109); // -11148
+  });
+
+  it('infers direction independently per lot (confirmed with real data: two lots of the same account, one ascending, one descending)', () => {
+    const ascA = { id: 'ascA', dataOperacio: '2026-01-01', importCents: -100, saldoPosteriorCents: null, seq: 0, lotImportacioId: 'ascendent' };
+    const ascB1 = { id: 'ascB1', dataOperacio: '2026-01-05', importCents: -10, saldoPosteriorCents: null, seq: 1, lotImportacioId: 'ascendent' };
+    const ascB2 = { id: 'ascB2', dataOperacio: '2026-01-05', importCents: -20, saldoPosteriorCents: null, seq: 2, lotImportacioId: 'ascendent' };
+
+    const descA = { id: 'descA', dataOperacio: '2026-02-05', importCents: -30, saldoPosteriorCents: null, seq: 10, lotImportacioId: 'descendent' };
+    const descB1 = { id: 'descB1', dataOperacio: '2026-02-01', importCents: -1, saldoPosteriorCents: null, seq: 11, lotImportacioId: 'descendent' };
+    const descB2 = { id: 'descB2', dataOperacio: '2026-02-01', importCents: -2, saldoPosteriorCents: null, seq: 12, lotImportacioId: 'descendent' };
+
+    const saldos = creaSaldoAcumulatPerMoviment([ascA, ascB1, ascB2, descA, descB1, descB2]);
+    // Ascending lot: within 01/05, seq 1 (ascB1) comes before seq 2 (ascB2).
+    expect(saldos.get('ascB1')).toBe(-100 - 10);
+    expect(saldos.get('ascB2')).toBe(-100 - 10 - 20);
+    // Descending lot: within 02/01, higher seq (descB2=12) comes before lower seq (descB1=11).
+    const acumulatFinsAscendent = -100 - 10 - 20;
+    expect(saldos.get('descB2')).toBe(acumulatFinsAscendent - 2);
+    expect(saldos.get('descB1')).toBe(acumulatFinsAscendent - 2 - 1);
   });
 });
