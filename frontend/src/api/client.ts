@@ -98,6 +98,10 @@ export function setTransferenciaInterna(movimentId: string, value: boolean): Pro
   return req(`/moviments/${movimentId}`, { method: 'PATCH', ...json({ esTransferenciaInterna: value }) });
 }
 
+export function eliminaMoviment(movimentId: string): Promise<void> {
+  return req(`/moviments/${movimentId}`, { method: 'DELETE' });
+}
+
 // --- Categories i regles ---
 
 export function listCategories(): Promise<Categoria[]> {

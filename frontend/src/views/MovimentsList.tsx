@@ -7,6 +7,7 @@ import {
   confirmaTransferencia,
   createRegla,
   desmarcaLiquidacioTargeta,
+  eliminaMoviment,
   listMovimentsPerComptes,
   marcaLiquidacioTargeta,
   setMovimentCategoria,
@@ -119,10 +120,32 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
     // ascending — i.e. the order they appeared in the imported file — instead
     // of arbitrary row order, and this tiebreak is NOT flipped by the sort
     // direction: reversing date order shouldn't reverse a single day's
-    // internal chronology.
+    // internal chronology. Excepció: la contrapartida automàtica d'una
+    // liquidació de targeta pren com a "seq efectiu" el del càrrec que
+    // l'origina (no el seu propi seq, molt més alt per haver-se creat després)
+    // perquè es comporti, davant de la RESTA de moviments del dia, com si
+    // estigués a la mateixa posició que el càrrec -- comparar-la només contra
+    // el càrrec (seq idèntic per construcció) no n'hi ha prou: un comparador
+    // que namés desempata aquest parell concret deixa de ser transitiu quan
+    // hi ha un tercer moviment aquell dia, i Array.sort no garanteix cap
+    // resultat concret en aquest cas (bug real: la contrapartida acabava al
+    // final del dia en lloc de just per sobre del càrrec). El seu saldo
+    // (creaSaldoAcumulatPerMoviment / creaConsultaSaldo) ja es calcula per
+    // data/lot, no per aquest ordre visual, així que no es veu afectat.
+    const seqOrigen = new Map(moviments.map((m) => [m.id, m.seq]));
+    function seqEfectiu(m: Moviment): number {
+      return (m.movimentOrigenId ? seqOrigen.get(m.movimentOrigenId) : undefined) ?? m.seq;
+    }
+    function comparaParella(a: Moviment, b: Moviment): number {
+      const diferencia = seqEfectiu(a) - seqEfectiu(b);
+      if (diferencia !== 0) return diferencia;
+      if (a.movimentOrigenId === b.id) return -1;
+      if (b.movimentOrigenId === a.id) return 1;
+      return a.seq - b.seq;
+    }
     return resultat.sort((a, b) => {
-      if (ordre.camp === 'concepteOriginal') return a.concepteOriginal.localeCompare(b.concepteOriginal) * dir || a.seq - b.seq;
-      return a.dataOperacio.localeCompare(b.dataOperacio) * dir || a.seq - b.seq;
+      if (ordre.camp === 'concepteOriginal') return a.concepteOriginal.localeCompare(b.concepteOriginal) * dir || comparaParella(a, b);
+      return a.dataOperacio.localeCompare(b.dataOperacio) * dir || comparaParella(a, b);
     });
   }, [moviments, dataDes, dataFins, categoriaFiltre, text, tipus, ordre]);
 
@@ -158,6 +181,12 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
   async function handleTransferenciaChange(movimentId: string, value: boolean) {
     await setTransferenciaInterna(movimentId, value);
     setMoviments((prev) => prev.map((m) => (m.id === movimentId ? { ...m, esTransferenciaInterna: value } : m)));
+  }
+
+  async function handleElimina(m: Moviment) {
+    if (!confirm(`Eliminar aquest moviment ("${m.concepteOriginal}", ${formatDateEs(m.dataOperacio)})? Aquesta acció no es pot desfer.`)) return;
+    await eliminaMoviment(m.id);
+    refresh();
   }
 
   async function handleConfirmaSuggeriment(s: SuggerimentAmbDetall) {
@@ -366,6 +395,7 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
                   {c.alias}
                 </th>
               ))}
+              <th style={{ ...cellStyle, ...cellElimina }} rowSpan={2}></th>
             </tr>
             <tr>
               {seleccionats.map((c) => (
@@ -449,10 +479,15 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
                       </Fragment>
                     );
                   })}
+                  <td style={{ ...cellStyle, ...cellElimina }}>
+                    <button type="button" onClick={() => handleElimina(m)} title="Eliminar aquest moviment" style={{ fontSize: 12, lineHeight: 1, padding: '1px 3px' }}>
+                      X
+                    </button>
+                  </td>
                 </tr>
                 {reglaObertaPer === m.id && formRegla && (
                   <tr>
-                    <td colSpan={(targetes.length > 0 ? 5 : 4) + seleccionats.length * 2} style={{ ...cellStyle, background: '#f7f7f7' }}>
+                    <td colSpan={(targetes.length > 0 ? 6 : 5) + seleccionats.length * 2} style={{ ...cellStyle, background: '#f7f7f7' }}>
                       <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                         <strong>Nova regla:</strong>
                         <label>
@@ -517,5 +552,7 @@ const cellCategoria: React.CSSProperties = amplaFixa(162);
 const cellTI: React.CSSProperties = { ...amplaFixa(28), textAlign: 'center', padding: '2px 4px' };
 // Encabeix el selector de targeta (90px) + el botó "M"/"D" d'una lletra.
 const cellLiquidacio: React.CSSProperties = amplaFixa(130);
+// La més estreta possible: només cal encabir-hi el botó "X" d'eliminar.
+const cellElimina: React.CSSProperties = { ...amplaFixa(28), textAlign: 'center', padding: '2px 4px' };
 // P.ex. "-12.345,67" és un import/saldo raonablement gran per a un ús personal.
 const cellNumeric: React.CSSProperties = { ...amplaFixa(80), textAlign: 'right', fontVariantNumeric: 'tabular-nums' };
