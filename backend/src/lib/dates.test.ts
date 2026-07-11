@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isoFromUTCDate, parseFlexibleDate, parseNorma43Date } from './dates';
+import { isoFromDateCell, parseFlexibleDate, parseNorma43Date } from './dates';
 
 describe('parseFlexibleDate', () => {
   it('parses dd/mm/yyyy strings', () => {
@@ -15,8 +15,8 @@ describe('parseFlexibleDate', () => {
     expect(parseFlexibleDate('2026-06-29')).toBe('2026-06-29');
   });
 
-  it('converts a Date object using UTC fields (Excel serial dates)', () => {
-    const d = new Date(Date.UTC(2026, 6, 5));
+  it('converts a Date object using local fields (Excel serial dates, decoded by SheetJS relative to the reading machine\'s timezone)', () => {
+    const d = new Date(2026, 6, 5);
     expect(parseFlexibleDate(d)).toBe('2026-07-05');
   });
 
@@ -36,8 +36,8 @@ describe('parseNorma43Date', () => {
   });
 });
 
-describe('isoFromUTCDate', () => {
-  it('formats using UTC fields', () => {
-    expect(isoFromUTCDate(new Date(Date.UTC(2026, 0, 9)))).toBe('2026-01-09');
+describe('isoFromDateCell', () => {
+  it('formats using local fields, not UTC (bug: shifted every date back a day for timezones ahead of UTC)', () => {
+    expect(isoFromDateCell(new Date(2026, 0, 9))).toBe('2026-01-09');
   });
 });

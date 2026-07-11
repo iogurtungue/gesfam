@@ -34,8 +34,11 @@ export interface MovimentHashInput {
  * Deterministic id per spec 3.3: hash of (banc, compte, data operació, import,
  * concepte normalitzat, saldo posterior). Two legitimately identical same-day
  * movements (same amount + concept) collide here unless the running balance
- * after each differs — a documented residual limitation of the spec, most
- * visible on card movements which often lack a balance column.
+ * after each differs — most visible on card movements, which often lack a
+ * balance column. This is fine: the collision only needs to be resolved for
+ * movements imported in the same batch (see splitNousIDuplicats's per-batch
+ * occurrence suffix), since re-import protection across separate imports
+ * only needs *a* stable id per movement, not a unique one on its own.
  */
 export function computeMovimentHash(input: MovimentHashInput): string {
   const key = [

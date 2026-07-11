@@ -8,7 +8,7 @@ describe('parseIngAccount', () => {
       ['Movimientos de la Cuenta', '', '', '', '', '', ''],
       ['', '', 'Número de cuenta:', '1234 5678 90', '', '', ''],
       ['F. VALOR', 'CATEGORÍA', 'SUBCATEGORÍA', 'DESCRIPCIÓN', 'COMENTARIO', 'IMPORTE (€)', 'SALDO (€)'],
-      [new Date(Date.UTC(2026, 6, 6)), 'Otros ingresos', 'Ingresos', 'Transferencia recibida', '', 763.44, 1052.79],
+      [new Date(2026, 6, 6), 'Otros ingresos', 'Ingresos', 'Transferencia recibida', '', 763.44, 1052.79],
       ['', '', '', '', '', '', ''],
       ['05/07/2026', 'Hogar', 'Teléfono', 'Recibo GURBTEC', '', -42.35, 289.35],
     ];

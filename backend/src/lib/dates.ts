@@ -2,9 +2,20 @@ function pad2(n: number): string {
   return n.toString().padStart(2, '0');
 }
 
-/** SheetJS with cellDates:true builds Date objects at UTC midnight of the calendar date. */
-export function isoFromUTCDate(d: Date): string {
-  return `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`;
+/**
+ * SheetJS with cellDates:true decodes an Excel serial date (which has no
+ * timezone of its own — it's just a day count) into a Date object anchored
+ * to the *reading machine's local timezone*, not UTC: verified empirically by
+ * round-tripping a date through `xlsx` on a Europe/Madrid process — the
+ * calendar date survives via the local getters, not the UTC ones. Using the
+ * UTC getters here shifted every date back by one day for any timezone ahead
+ * of UTC (bug reported by the user: ING movements showing a day earlier than
+ * the bank's own export). Since encoding and decoding both happen on the
+ * same machine/process, using the local getters is correct regardless of
+ * which timezone that machine is actually in.
+ */
+export function isoFromDateCell(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
 /**
@@ -14,7 +25,7 @@ export function isoFromUTCDate(d: Date): string {
  */
 export function parseFlexibleDate(raw: string | Date): string {
   if (raw instanceof Date) {
-    return isoFromUTCDate(raw);
+    return isoFromDateCell(raw);
   }
 
   const s = raw.trim();
