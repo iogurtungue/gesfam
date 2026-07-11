@@ -29,11 +29,23 @@ describe('splitNousIDuplicats', () => {
     expect(duplicats).toBe(1);
   });
 
-  it('treats two legitimately identical same-day movements with the same running balance as a duplicate (documented limitation)', () => {
+  it('keeps two (or more) legitimately identical same-day movements in the same import batch as separate new movements, not duplicates', () => {
     const moviment = mov();
-    const { nous, duplicats } = splitNousIDuplicats('sabadell', 'compte-1', [moviment, { ...moviment }], new Set());
-    expect(nous).toHaveLength(1);
-    expect(duplicats).toBe(1);
+    const { nous, duplicats } = splitNousIDuplicats('sabadell', 'compte-1', [moviment, { ...moviment }, { ...moviment }], new Set());
+    expect(duplicats).toBe(0);
+    expect(nous).toHaveLength(3);
+    // First keeps the bare hash (compatible with data imported before this fix); later ones get a distinguishing suffix.
+    const hash = computeMovimentId('sabadell', 'compte-1', moviment);
+    expect(nous.map((m) => m.id)).toEqual([hash, `${hash}-2`, `${hash}-3`]);
+  });
+
+  it('recognizes a full re-import of the same repeated-hash group as all-duplicates, not just its first occurrence', () => {
+    const moviment = mov();
+    const hash = computeMovimentId('sabadell', 'compte-1', moviment);
+    const existingIds = new Set([hash, `${hash}-2`, `${hash}-3`]);
+    const { nous, duplicats } = splitNousIDuplicats('sabadell', 'compte-1', [moviment, { ...moviment }, { ...moviment }], existingIds);
+    expect(nous).toHaveLength(0);
+    expect(duplicats).toBe(3);
   });
 
   it('keeps two same-day identical-looking movements distinct when the running balance differs', () => {
