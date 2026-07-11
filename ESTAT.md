@@ -133,6 +133,16 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 
 ## 2. Historial de canvis
 
+### 2026-07-11 — Exportar els moviments mostrats a Excel (.xlsx)
+
+L'usuari ha demanat poder exportar els moviments de la pàgina de Moviments a una fulla d'Excel real (ja existia "Exportar CSV", però demanava explícitament un .xlsx binari amb els imports com a números, no com a text).
+
+- Nova dependència de frontend: `xlsx` (SheetJS Community Edition, ^0.20.3).
+- `frontend/src/views/MovimentsList.tsx`: nou botó "Exportar Excel" al costat d'"Exportar CSV". `exportaExcel()` construeix un `aoa_to_sheet` amb les mateixes columnes que el CSV (Data, Compte, Concepte, Import, Saldo, Categoria) però amb Import/Saldo com a números (cèntims / 100) en lloc de text formatat. La llibreria es carrega amb `import('xlsx')` dinàmic (només en clicar el botó): és pesada (~330kB) i bundlar-la sempre hauria doblat la mida del chunk principal (590kB → 923kB); amb l'import dinàmic queda en un chunk separat que només es descarrega quan cal.
+- Extreta `saldoPropiCents(m)` (compartida per `exportaCSV` i `exportaExcel`): per a targetes, usa `saldoAcumulatTargetaPerMoviment` (el deute acumulat, ja que `saldoPosteriorCents` hi és sempre null) — de pas corregeix que l'exportació CSV de moviments de targeta sempre havia sortit amb la columna Saldo buida.
+- Verificat generant un .xlsx real amb les mateixes crides (`aoa_to_sheet`/`book_new`/`book_append_sheet`) i llegint-lo de nou (`XLSX.read` sobre el buffer) per confirmar que els números i els accents es conserven correctament.
+- `tsc -b`, `oxlint`, `vite build` i els 30 tests frontend nets (sense tests nous: no hi ha tests de component per a `MovimentsList.tsx`).
+
 ### 2026-07-11 — Descartar un suggeriment de transferència interna
 
 L'usuari ha demanat poder eliminar/descartar un suggeriment de transferència interna (falsa alarma: dos moviments de comptes propis que coincideixen per import/data però que no són realment una transferència). Com que el suggeriment es recalcula cada vegada amb una heurística sense estat (`suggereixTransferenciesInternes`, mateix import en valor absolut i signe oposat, ±2 dies), calia persistir el descart perquè no tornés a aparèixer en refrescar.
