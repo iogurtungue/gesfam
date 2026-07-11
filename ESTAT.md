@@ -133,6 +133,29 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 
 ## 2. Historial de canvis
 
+### 2026-07-11 — La contrapartida d'una liquidació es mostra just per sobre del càrrec que l'origina
+
+L'usuari ha demanat que el nou moviment que es crea en marcar una liquidació de targeta (la contrapartida automàtica) quedi just per sobre, a la taula, del càrrec de compte corrent que la va originar, i que això tingui en compte els saldos.
+
+Abans, dins d'un mateix dia, l'ordre de visualització sempre desempatava per `seq` ascendent (ordre d'inserció); com que la contrapartida s'assigna un `seq` nou en el moment de marcar (sempre més alt que el del càrrec, importat abans), sortia per sota seu.
+
+Un primer intent (desempatar només el parell càrrec/contrapartida per `movimentOrigenId`, mantenint `seq` per a la resta) no funcionava quan hi havia més moviments aquell mateix dia: l'usuari ho va detectar amb la liquidació de 50€ de l'11/12/2025, on la contrapartida acabava al final de tot el dia en lloc de just per sobre del càrrec. Causa: un comparador que només desempata un parell concret deixa de ser transitiu quan hi ha un tercer element (el seu `seq`, molt alt, el situa per sota de tercers moviments amb qui mai es compara directament amb aquesta regla), i `Array.sort` no garanteix cap resultat concret quan el comparador no és transitiu.
+
+- `frontend/src/views/MovimentsList.tsx`: al comparador de `filtrats`, `seqEfectiu(m)` — la contrapartida pren com a seq efectiu el del càrrec que l'origina (no el seu propi, irrellevant) per a totes les comparacions; així es comporta, davant de tercers moviments del dia, exactament com si estigués a la posició del càrrec. `comparaParella(a, b)` compara primer per aquest seq efectiu i només desempata explícitament (contrapartida abans que el càrrec) quan tots dos hi coincideixen. Verificat amb un script aïllat que replica l'escenari real (3 moviments el mateix dia + la contrapartida): resultat correcte.
+- Els saldos no necessiten cap canvi: als comptes seleccionats diferents del propi, `creaConsultaSaldo` agrupa per data (no per aquest ordre visual, és order-independent); a la columna del propi compte, `saldoAcumulatTargetaPerMoviment`/`creaSaldoAcumulatPerMoviment` calculen a partir de `seq`/lot, no de l'ordre de `filtrats` — reordenar aquí no els desquadra.
+- `tsc -b`, `oxlint`, `vite build` i els 30 tests frontend nets (no calen tests nous: no hi ha tests de component per a `MovimentsList.tsx`, només de les funcions de `lib/`). No verificat interactivament al navegador (sense eina de navegador disponible en aquesta sessió).
+
+### 2026-07-11 — Eliminar un únic moviment (amb confirmació)
+
+L'usuari ha demanat poder eliminar un moviment concret (no tot un lot d'importació) amb confirmació prèvia, i que els saldos reflecteixin la baixa. Pel saldo de compte corrent no cal cap recàlcul: `saldoPosteriorCents` és un valor real de l'extracte bancari, propi de cada moviment restant, independent dels que s'esborrin. Pel saldo de targeta (deute acumulat, purament calculat al frontend a partir dels moviments carregats) tampoc cal cap canvi específic: en tornar a demanar els moviments després d'esborrar, `creaSaldoAcumulatPerMoviment` ja recalcula sobre la llista actualitzada.
+
+- `backend/src/db/operations.ts`: nova `eliminaMoviment(id)` — si el moviment eliminat és un càrrec de compte corrent marcat com a liquidació de targeta, elimina també la seva contrapartida virtual (altrament quedaria un crèdit fantasma orfe a la targeta); si és la pròpia contrapartida, restaura l'origen a l'estat de no liquidat. Les transferències internes no necessiten cap neteja en cascada (el flag és independent a cada costat, sense punter a la parella).
+- `backend/src/routes.ts`: nova ruta `DELETE /moviments/:id`.
+- `frontend/src/api/client.ts`: nova `eliminaMoviment(id)`.
+- `frontend/src/views/MovimentsList.tsx`: nova columna d'acció (botó "X") a cada fila, amb `confirm()` del navegador (mateix patró que la resta de l'app) abans de cridar l'API i refrescar la llista.
+- Tests nous a `operations.test.ts` (moviment normal, id inexistent, cascada en tots dos sentits amb la contrapartida). 109 tests backend (abans 105); `tsc -b`, `oxlint` i `vite build` nets a totes dues bandes.
+- Verificat manualment via l'API en dades temporals (no `finances.db` real): marcatge d'una liquidació, eliminació del càrrec confirmant que la contrapartida desapareix en cascada, i que eliminar un id inexistent retorna 400.
+
 ### 2026-07-11 — Correcció de l'ordre de moviments del mateix dia al saldo acumulat de targeta
 
 L'usuari va detectar, validant la funcionalitat anterior (saldo a la columna pròpia de targeta), que els saldos de 3 moviments del mateix dia (30/11/2025, compte ING-TG-JN) sortien desordenats. Es va investigar amb una consulta de només lectura contra `dades/finances.db` (mai escrita): `creaSaldoAcumulatPerMoviment` desempatava moviments del mateix dia per `seq` ascendent, assumint que `seq` (ordre d'inserció a la importació) reflecteix l'ordre cronològic. Però `seq` només reflecteix l'ordre de les files al fitxer d'origen, i aquest ordre **no és consistent**: es va confirmar amb dades reals que el lot d'ING-TG-JN llista tot el fitxer de més recent a més antic (48 files, tendència consistent), mentre que BBVA-TG-JN té un lot ascendent i un altre descendent pel mateix compte — no hi ha cap conveni fix per banc, ni tan sols per compte.
