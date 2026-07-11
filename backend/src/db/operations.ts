@@ -455,6 +455,31 @@ export function setTransferenciaInterna(movimentId: string, value: boolean): voi
   getDb().prepare('UPDATE moviments SET es_transferencia_interna = ? WHERE id = ?').run(value ? 1 : 0, movimentId);
 }
 
+/**
+ * Elimina un únic moviment (a diferència d'undoLot, que elimina tot un lot
+ * sencer). Si el moviment és el càrrec de compte corrent que liquida una
+ * targeta, elimina també la seva contrapartida virtual (altrament quedaria
+ * orfe, com un crèdit fantasma a la targeta). Si el moviment és la pròpia
+ * contrapartida virtual, restaura l'origen a l'estat de no liquidat.
+ */
+export function eliminaMoviment(movimentId: string): void {
+  const db = getDb();
+  const moviment = obteMoviment(db, movimentId);
+  if (!moviment) {
+    throw new Error('El moviment indicat no existeix.');
+  }
+
+  backupDbFile();
+  transaction(db, () => {
+    if (moviment.esLiquidacioTargetaId) {
+      db.prepare('DELETE FROM moviments WHERE moviment_origen_id = ?').run(movimentId);
+    } else if (moviment.movimentOrigenId) {
+      db.prepare('UPDATE moviments SET es_liquidacio_targeta_id = NULL, es_transferencia_interna = 0 WHERE id = ?').run(moviment.movimentOrigenId);
+    }
+    db.prepare('DELETE FROM moviments WHERE id = ?').run(movimentId);
+  });
+}
+
 export interface SuggerimentAmbDetall extends SuggerimentTransferencia {
   movimentA: Moviment;
   movimentB: Moviment;

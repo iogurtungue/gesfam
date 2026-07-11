@@ -15,6 +15,7 @@ const {
   deleteReglaLiquidacio,
   desmarcaLiquidacioTargeta,
   eliminaCompte,
+  eliminaMoviment,
   eliminaTotsElsMoviments,
   listCategories,
   listComptes,
@@ -370,6 +371,51 @@ describe('liquidacions de targeta (especificacio.md 3.2.1)', () => {
     eliminaCompte(targeta.id);
 
     expect(listReglesLiquidacio()).toEqual([]);
+  });
+});
+
+describe('eliminaMoviment', () => {
+  it('deletes a plain movement with no special marking', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    commitImport(corrent, [mov('2026-06-05', 'SUPERMERCAT', -3000)], 'extracte.txt');
+    const [m] = listMovimentsPerComptes([corrent.id]);
+
+    eliminaMoviment(m.id);
+
+    expect(listMovimentsPerComptes([corrent.id])).toEqual([]);
+  });
+
+  it('throws for a movement id that does not exist', () => {
+    expect(() => eliminaMoviment('no-existeix')).toThrow();
+  });
+
+  it('deleting the corrent charge marked as a settlement also deletes its virtual counterpart on the card', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    commitImport(corrent, [mov('2026-06-05', 'LIQUIDACION', -1000)], 'corrent.txt');
+    const [carrec] = listMovimentsPerComptes([corrent.id]);
+    marcaLiquidacioTargeta(carrec.id, targeta.id);
+    expect(listMovimentsPerComptes([targeta.id])).toHaveLength(1);
+
+    eliminaMoviment(carrec.id);
+
+    expect(listMovimentsPerComptes([corrent.id])).toEqual([]);
+    expect(listMovimentsPerComptes([targeta.id])).toEqual([]);
+  });
+
+  it('deleting the virtual counterpart directly restores the origin charge to unmarked', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    commitImport(corrent, [mov('2026-06-05', 'LIQUIDACION', -1000)], 'corrent.txt');
+    const [carrec] = listMovimentsPerComptes([corrent.id]);
+    const { contrapartida } = marcaLiquidacioTargeta(carrec.id, targeta.id);
+
+    eliminaMoviment(contrapartida.id);
+
+    expect(listMovimentsPerComptes([targeta.id])).toEqual([]);
+    const [carrecRestaurat] = listMovimentsPerComptes([corrent.id]);
+    expect(carrecRestaurat.esLiquidacioTargetaId).toBeUndefined();
+    expect(carrecRestaurat.esTransferenciaInterna).toBe(false);
   });
 });
 

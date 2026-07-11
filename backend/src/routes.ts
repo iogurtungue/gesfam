@@ -76,6 +76,15 @@ router.patch('/moviments/:id', (req, res) => {
   }
 });
 
+router.delete('/moviments/:id', (req, res) => {
+  try {
+    ops.eliminaMoviment(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
 // --- Categories i regles ---
 
 router.get('/categories', (_req, res) => {
