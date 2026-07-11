@@ -133,6 +133,14 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 
 ## 2. Historial de canvis
 
+### 2026-07-11 — Correcció de l'ordre de moviments del mateix dia al saldo acumulat de targeta
+
+L'usuari va detectar, validant la funcionalitat anterior (saldo a la columna pròpia de targeta), que els saldos de 3 moviments del mateix dia (30/11/2025, compte ING-TG-JN) sortien desordenats. Es va investigar amb una consulta de només lectura contra `dades/finances.db` (mai escrita): `creaSaldoAcumulatPerMoviment` desempatava moviments del mateix dia per `seq` ascendent, assumint que `seq` (ordre d'inserció a la importació) reflecteix l'ordre cronològic. Però `seq` només reflecteix l'ordre de les files al fitxer d'origen, i aquest ordre **no és consistent**: es va confirmar amb dades reals que el lot d'ING-TG-JN llista tot el fitxer de més recent a més antic (48 files, tendència consistent), mentre que BBVA-TG-JN té un lot ascendent i un altre descendent pel mateix compte — no hi ha cap conveni fix per banc, ni tan sols per compte.
+
+- `frontend/src/lib/balance.ts`: `MovimentAcumulat` ara inclou `lotImportacioId`. Nova `inferDireccioLot(moviments)`: per a un lot d'importació, compara el `seq` mitjà dels moviments de la data més antiga contra els de la data més recent d'aquell mateix lot; si puja amb la data és ascendent, si baixa és descendent (una sola data al lot no dona senyal i es tracta com a ascendent per defecte). `creaSaldoAcumulatPerMoviment` agrupa els moviments per lot, infereix la direcció de cadascun, i l'aplica només per desempatar moviments del mateix dia **dins del mateix lot**; un empat de dia entre moviments de lots diferents (rar, sense cap senyal fiable) cau de nou a `seq` ascendent tal com abans.
+- Tests nous a `balance.test.ts` reproduint l'escenari real exacte (27-30/11/2025, ING-TG-JN, valors -6,25/-10,39/-111,48/-90,39/-60,39 confirmats amb una execució de només lectura de la funció real contra `finances.db`) i un cas amb dos lots del mateix compte amb direccions oposades. 30 tests frontend (abans 28); `tsc -b`, `oxlint` i `vite build` nets.
+- No verificat interactivament al navegador (sense eina de navegador disponible en aquesta sessió) — verificat via tests automàtics i una execució directa de la funció contra les dades reals en mode només lectura.
+
 ### 2026-07-11 — Saldo (deute acumulat) a la columna pròpia dels moviments de targeta
 
 L'usuari ha demanat poder veure el saldo als moviments de targeta. La columna "Saldo" ja calculava correctament el deute acumulat per a targetes quan es mostrava la columna d'un *altre* compte seleccionat (via `creaConsultaSaldo`), però a la columna del propi compte es llegia directament `m.saldoPosteriorCents`, que els parsers de targeta (BBVA, ING) mai omplen (les targetes no porten saldo a l'extracte) — així que la cel·la sempre mostrava "—".
