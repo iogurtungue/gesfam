@@ -151,6 +151,10 @@ export function confirmaTransferencia(suggeriment: SuggerimentTransferencia): Pr
   return req('/transferencies/confirma', { method: 'POST', ...json(suggeriment) });
 }
 
+export function descartaTransferencia(suggeriment: SuggerimentTransferencia): Promise<void> {
+  return req('/transferencies/descarta', { method: 'POST', ...json(suggeriment) });
+}
+
 // --- Liquidacions de targeta (especificacio.md 3.2.1) ---
 
 export function listReglesLiquidacio(): Promise<ReglaLiquidacioTargeta[]> {

@@ -143,6 +143,7 @@ export interface Backup {
   categories: Categoria[];
   regles: ReglaCategoritzacio[];
   reglesLiquidacio: ReglaLiquidacioTargeta[];
+  transferenciesDescartades: SuggerimentTransferencia[];
 }
 
 export interface CommitImportResult {

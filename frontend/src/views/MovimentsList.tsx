@@ -6,6 +6,7 @@ import {
   aplicaReglesAMovimentsSenseCategoria,
   confirmaTransferencia,
   createRegla,
+  descartaTransferencia,
   desmarcaLiquidacioTargeta,
   eliminaMoviment,
   listMovimentsPerComptes,
@@ -195,6 +196,11 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
     setMoviments((prev) => prev.map((m) => (m.id === s.a || m.id === s.b ? { ...m, esTransferenciaInterna: true } : m)));
   }
 
+  async function handleDescartaSuggeriment(s: SuggerimentAmbDetall) {
+    await descartaTransferencia(s);
+    setSuggeriments((prev) => prev.filter((x) => x !== s));
+  }
+
   function obreFormRegla(m: Moviment) {
     setReglaObertaPer(m.id);
     setFormRegla({ patro: m.concepteNormalitzat, categoriaId: m.categoriaId ?? categories[0]?.id ?? '' });
@@ -302,7 +308,10 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
                 <span style={colorImport(s.movimentA.importCents)}>{centsToEs(s.movimentA.importCents, false)}</span>) ↔{' '}
                 {compteAlias(s.movimentB.compteId)}: {s.movimentB.concepteOriginal} (
                 <span style={colorImport(s.movimentB.importCents)}>{centsToEs(s.movimentB.importCents, false)}</span>){' '}
-                <button onClick={() => handleConfirmaSuggeriment(s)}>Confirmar</button>
+                <button onClick={() => handleConfirmaSuggeriment(s)}>Confirmar</button>{' '}
+                <button onClick={() => handleDescartaSuggeriment(s)} title="No tornar a suggerir aquesta parella">
+                  Descartar
+                </button>
               </li>
             ))}
           </ul>
