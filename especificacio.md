@@ -65,7 +65,7 @@ Consideracions específiques que Claude Code ha d'implementar:
 
 ### 3.3 Deduplicació
 
-Cada moviment rep un identificador determinista: hash de `(banc, compte, data operació, import, concepte normalitzat, saldo posterior)`. En reimportar un extracte que se solapa amb un d'anterior (cas habitual: l'usuari descarrega sempre «últims 90 dies»), els moviments ja existents s'ignoren silenciosament. Cal contemplar el cas de **dos moviments legítimament idèntics el mateix dia** (mateix import i concepte): el saldo posterior al hash ho resol en la majoria de casos; documentar la limitació residual.
+Cada moviment rep un identificador determinista: hash de `(banc, compte, data operació, import, concepte normalitzat, saldo posterior)`. En reimportar un extracte que se solapa amb un d'anterior (cas habitual: l'usuari descarrega sempre «últims 90 dies»), els moviments ja existents (segons aquest hash) s'ignoren silenciosament. La deduplicació **només s'aplica contra moviments d'una importació anterior**, mai entre moviments del mateix fitxer que s'està important en aquell moment: dos (o més) moviments legítimament idèntics el mateix dia (mateix import i concepte, típic a extractes de targeta sense columna de saldo) són transaccions reals i separades, no un duplicat. Com que el hash per si sol no els distingeix i l'id és clau primària, el 2n, 3r... moviment amb un hash repetit dins del mateix lot rep un sufix determinista (`-2`, `-3`...) segons l'ordre d'aparició al fitxer, de manera que una reimportació íntegra del mateix fitxer els torna a reconèixer tots com a ja existents, no només el primer.
 
 ### 3.4 Model de dades
 
