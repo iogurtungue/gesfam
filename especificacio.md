@@ -73,7 +73,7 @@ Cada moviment rep un identificador determinista: hash de `(banc, compte, data op
 - **Moviment**: id (hash), compteId, dataOperació, dataValor, concepte original, concepte normalitzat, import (positiu = ingrés, negatiu = càrrec), saldo posterior si es coneix, categoria, lotImportació, marca de recurrència (vegeu funcionalitat 2).
 - **LotImportació**: id, data, fitxer d'origen, banc, nombre de moviments, per poder desfer una importació sencera.
 - **Categoria**: llista editable amb categories predefinides raonables (habitatge, subministraments, alimentació, transport, nòmina, impostos, oci, transferències internes…). Categorització per **regles** definibles per l'usuari («si el concepte conté ENDESA → subministraments») que s'apliquen automàticament en importar.
-- **Transferències internes**: detectar (o permetre marcar) moviments entre els comptes propis perquè no comptin com a ingrés/despesa real en agregats ni en la previsió.
+- **Transferències internes**: detectar (o permetre marcar) moviments entre els comptes propis perquè no comptin com a ingrés/despesa real en agregats ni en la previsió. Cada suggeriment es pot confirmar (marca els dos moviments) o descartar (falsa alarma: no torna a suggerir-se aquesta parella, sense marcar-los).
 
 ### 3.5 Vistes de consulta
 

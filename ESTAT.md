@@ -133,6 +133,17 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 
 ## 2. Historial de canvis
 
+### 2026-07-11 — Descartar un suggeriment de transferència interna
+
+L'usuari ha demanat poder eliminar/descartar un suggeriment de transferència interna (falsa alarma: dos moviments de comptes propis que coincideixen per import/data però que no són realment una transferència). Com que el suggeriment es recalcula cada vegada amb una heurística sense estat (`suggereixTransferenciesInternes`, mateix import en valor absolut i signe oposat, ±2 dies), calia persistir el descart perquè no tornés a aparèixer en refrescar.
+
+- Migració 004: taula `transferencies_descartades (id, moviment_a_id, moviment_b_id)` — `id` és una clau determinista sense ordre (`[a,b].sort().join(':')`) perquè descartar dues vegades la mateixa parella (en qualsevol ordre d'`a`/`b`) sigui idempotent (`INSERT OR IGNORE`).
+- `backend/src/db/operations.ts`: nova `descartaTransferencia(suggeriment)`; `suggereixTransferencies()` filtra els suggeriments que coincideixin amb una parella descartada; nova `listTransferenciesDescartades()`. Neteja en cascada: `eliminaMoviment` i `undoLot` esborren les entrades que referencien els moviments eliminats; `reinicialitzaBaseDades` i `eliminaTotsElsMoviments` netegen tota la taula. Backup (`exportaCopiaSeguretat`/`importaCopiaSeguretat`) ampliat amb `transferenciesDescartades` (amb fallback `?? []` per còpies antigues).
+- `backend/src/routes.ts`: nova ruta `POST /transferencies/descarta`.
+- `frontend/src/views/MovimentsList.tsx`: nou botó "Descartar" al costat de "Confirmar" a cada línia del banner de suggeriments.
+- Tests nous a `operations.test.ts` (descartar, idempotència, parelles no relacionades no afectades, `confirmaTransferencia` segueix funcionant, neteja en cascada des d'`eliminaMoviment` i `undoLot`, neteja completa des de `reinicialitzaBaseDades`). 115 tests backend (abans 109); 30 frontend (sense canvis, no hi ha tests de component per a `MovimentsList.tsx`). `tsc -b`, `oxlint` i `vite build` nets a totes dues bandes.
+- Verificat manualment via l'API en dades temporals (no `finances.db` real): suggeriment detectat, descartat, deixa d'aparèixer, descartar-lo dues vegades no falla, i els moviments continuen sense marcar com a transferència interna.
+
 ### 2026-07-11 — La contrapartida d'una liquidació es mostra just per sobre del càrrec que l'origina
 
 L'usuari ha demanat que el nou moviment que es crea en marcar una liquidació de targeta (la contrapartida automàtica) quedi just per sobre, a la taula, del càrrec de compte corrent que la va originar, i que això tingui en compte els saldos.
