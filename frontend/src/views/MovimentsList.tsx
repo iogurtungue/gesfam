@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { creaConsultaSaldo } from '../lib/balance';
+import { creaConsultaSaldo, creaSaldoAcumulatPerMoviment } from '../lib/balance';
 import { avui, formatDateEs } from '../lib/dates';
 import { centsToEs } from '../lib/numbers';
 import {
@@ -74,6 +74,22 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
     for (const c of seleccionats) {
       const movimentsCompte = moviments.filter((m) => m.compteId === c.id);
       map.set(c.id, creaConsultaSaldo(movimentsCompte, c.tipus));
+    }
+    return map;
+  }, [moviments, seleccionats]);
+
+  // Les targetes no porten saldo a l'extracte (saldoPosteriorCents és sempre
+  // null): el deute acumulat de cada moviment propi es calcula sumant els
+  // imports en ordre cronològic (es reinicia amb cada contrapartida de
+  // liquidació, que cancel·la exactament l'import liquidat).
+  const saldoAcumulatTargetaPerMoviment = useMemo(() => {
+    const map = new Map<string, number>();
+    for (const c of seleccionats) {
+      if (c.tipus !== 'targeta') continue;
+      const movimentsCompte = moviments.filter((m) => m.compteId === c.id);
+      for (const [id, saldo] of creaSaldoAcumulatPerMoviment(movimentsCompte)) {
+        map.set(id, saldo);
+      }
     }
     return map;
   }, [moviments, seleccionats]);
@@ -355,7 +371,16 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
               {seleccionats.map((c) => (
                 <Fragment key={c.id}>
                   <th style={{ ...cellStyle, ...cellNumeric }}>Import</th>
-                  <th style={{ ...cellStyle, ...cellNumeric }}>Saldo</th>
+                  <th
+                    style={{ ...cellStyle, ...cellNumeric }}
+                    title={
+                      c.tipus === 'targeta'
+                        ? "Deute acumulat des de l'inici de les dades importades; es reinicia amb cada liquidació registrada. No és un saldo disponible."
+                        : undefined
+                    }
+                  >
+                    Saldo
+                  </th>
                 </Fragment>
               ))}
             </tr>
@@ -406,7 +431,10 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
                             {centsToEs(m.importCents, false)}
                           </td>
                           <td style={{ ...cellStyle, ...cellNumeric, fontWeight: 'bold' }}>
-                            {m.saldoPosteriorCents !== null ? centsToEs(m.saldoPosteriorCents, false) : '—'}
+                            {(() => {
+                              const saldoPropi = c.tipus === 'targeta' ? (saldoAcumulatTargetaPerMoviment.get(m.id) ?? null) : m.saldoPosteriorCents;
+                              return saldoPropi !== null ? centsToEs(saldoPropi, false) : '—';
+                            })()}
                           </td>
                         </Fragment>
                       );

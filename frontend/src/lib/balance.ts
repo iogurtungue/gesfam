@@ -136,3 +136,26 @@ export function creaConsultaSaldo(moviments: MovimentPerSaldo[], tipus: AccountT
     return resultat;
   };
 }
+
+export interface MovimentAcumulat extends MovimentPerSaldo {
+  id: string;
+}
+
+/**
+ * Deute acumulat d'un compte targeta immediatament després de cada moviment
+ * concret (a diferència de creaConsultaSaldo, que només resol "saldo vigent
+ * en una data" i per tant no distingeix entre diversos moviments del mateix
+ * dia). Com que la suma és order-independent (veure saldoEnData), l'ordre
+ * cronològic exacte dins del mateix dia només importa per decidir quin
+ * valor mostrar a cada fila, no pel resultat final acumulat.
+ */
+export function creaSaldoAcumulatPerMoviment(moviments: MovimentAcumulat[]): Map<string, number> {
+  const ordenats = [...moviments].sort((a, b) => a.dataOperacio.localeCompare(b.dataOperacio) || a.seq - b.seq);
+  const resultat = new Map<string, number>();
+  let acumulat = 0;
+  for (const m of ordenats) {
+    acumulat += m.importCents;
+    resultat.set(m.id, acumulat);
+  }
+  return resultat;
+}

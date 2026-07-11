@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { creaConsultaSaldo, saldoEnData } from './balance';
+import { creaConsultaSaldo, creaSaldoAcumulatPerMoviment, saldoEnData } from './balance';
 
 describe('saldoEnData', () => {
   it('returns the running balance of the latest movement on or before the date (compte corrent)', () => {
@@ -104,5 +104,48 @@ describe('creaConsultaSaldo', () => {
 
   it('returns null for an account with no movements at all', () => {
     expect(creaConsultaSaldo([], 'corrent')('2026-06-01')).toBeNull();
+  });
+});
+
+describe('creaSaldoAcumulatPerMoviment', () => {
+  it('accumulates debt chronologically and keys the result by movement id', () => {
+    const moviments = [
+      { id: 'a', dataOperacio: '2026-06-01', importCents: -1000, saldoPosteriorCents: null, seq: 0 },
+      { id: 'b', dataOperacio: '2026-06-05', importCents: -500, saldoPosteriorCents: null, seq: 1 },
+      { id: 'c', dataOperacio: '2026-06-10', importCents: -200, saldoPosteriorCents: null, seq: 2 },
+    ];
+    const saldos = creaSaldoAcumulatPerMoviment(moviments);
+    expect(saldos.get('a')).toBe(-1000);
+    expect(saldos.get('b')).toBe(-1500);
+    expect(saldos.get('c')).toBe(-1700);
+  });
+
+  it('is independent of input order, using dataOperacio + seq to sequence same-day movements', () => {
+    const a = { id: 'a', dataOperacio: '2026-06-05', importCents: -100, saldoPosteriorCents: null, seq: 0 };
+    const b = { id: 'b', dataOperacio: '2026-06-05', importCents: -200, saldoPosteriorCents: null, seq: 1 };
+    const c = { id: 'c', dataOperacio: '2026-06-05', importCents: 50, saldoPosteriorCents: null, seq: 2 };
+
+    expect(creaSaldoAcumulatPerMoviment([a, b, c])).toEqual(creaSaldoAcumulatPerMoviment([c, a, b]));
+    const saldos = creaSaldoAcumulatPerMoviment([c, a, b]);
+    expect(saldos.get('a')).toBe(-100);
+    expect(saldos.get('b')).toBe(-300);
+    expect(saldos.get('c')).toBe(-250);
+  });
+
+  it('a settlement contrapartida cancels exactly the settled amount, leaving only out-of-cycle charges as pending debt', () => {
+    // Mirrors the real-world case where the settlement date (5th) doesn't
+    // match the billing cutoff (26th of the previous month): charges dated
+    // after the cutoff but before the settlement date (27-2) are NOT part of
+    // this settlement's billed amount, yet they must still show up as
+    // pending debt afterwards, not get silently cancelled out.
+    const carrec20 = { id: 'c20', dataOperacio: '2026-06-20', importCents: -5000, saldoPosteriorCents: null, seq: 0 };
+    const carrec26 = { id: 'c26', dataOperacio: '2026-06-26', importCents: -3000, saldoPosteriorCents: null, seq: 1 };
+    const carrec27 = { id: 'c27', dataOperacio: '2026-06-27', importCents: -4000, saldoPosteriorCents: null, seq: 2 };
+    const carrec02 = { id: 'c02', dataOperacio: '2026-07-02', importCents: -2000, saldoPosteriorCents: null, seq: 3 };
+    // Billed amount only covers charges up to the 26th (5000+3000=8000).
+    const contrapartida = { id: 'liq', dataOperacio: '2026-07-05', importCents: 8000, saldoPosteriorCents: null, seq: 4 };
+
+    const saldos = creaSaldoAcumulatPerMoviment([carrec20, carrec26, carrec27, carrec02, contrapartida]);
+    expect(saldos.get('liq')).toBe(-4000 + -2000); // -6000: exactly the still-unsettled 27th + 2nd charges.
   });
 });
