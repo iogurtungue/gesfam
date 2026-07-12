@@ -117,17 +117,35 @@ frontend/src/
 
 ### Estat de les proves
 
-Backend: 105 tests (Vitest) — parsers, dedup, `lib/` (inclou `liquidacioTargeta.ts`, `computeContrapartidaId`), `db/operations.ts` contra SQLite en memòria (`GESFAM_DB_PATH=':memory:'`, inclou el mecanisme de liquidació de targeta: marcatge, quadratura, idempotència, cascada via `undoLot`), `db/client.ts` (migracions) i `db/backupFile.ts` (còpia + retenció). Frontend: 25 tests — `lib/balance.ts`, `lib/summary.ts`, `lib/dates.ts`, `lib/numbers.ts` (només lògica de visualització, ja no hi ha res a testejar amb `fake-indexeddb`; el formulari de "nova regla" de `MovimentsList.tsx` reutilitza `createRegla`/`aplicaReglesAMovimentsSenseCategoria`, ja coberts pels tests de `CategoriesManager`/backend, i no té tests propis). `npx tsc -b` net a totes dues bandes, `npm run build` (frontend) i `oxlint` (frontend) nets.
+Backend: 131 tests (Vitest) — parsers, dedup, `lib/` (inclou `liquidacioTargeta.ts`, `computeContrapartidaId`, `computeRecurrentHash`), `db/operations.ts` contra SQLite en memòria (`GESFAM_DB_PATH=':memory:'`, inclou el mecanisme de liquidació de targeta: marcatge, quadratura, idempotència, cascada via `undoLot`; i el model de recurrents: creació manual, validacions, eliminació, còpia de seguretat, manteniment), `db/client.ts` (migracions) i `db/backupFile.ts` (còpia + retenció). Frontend: 25 tests — `lib/balance.ts`, `lib/summary.ts`, `lib/dates.ts`, `lib/numbers.ts` (només lògica de visualització, ja no hi ha res a testejar amb `fake-indexeddb`; el formulari de "nova regla" de `MovimentsList.tsx` reutilitza `createRegla`/`aplicaReglesAMovimentsSenseCategoria`, ja coberts pels tests de `CategoriesManager`/backend, i no té tests propis). `npx tsc -b` net a totes dues bandes, `npm run build` (frontend) i `oxlint` (frontend) nets.
 
 Verificació addicional (no automatitzada, feta manualment durant la migració d'arquitectura, vegeu historial): migració de la còpia de seguretat JSON real de l'usuari (4 comptes, 266 moviments, 4 lots, 23 categories, 15 regles) a SQLite amb comparació camp a camp — 0 diferències reals; arrencada de `npm start` real contra `dades/finances.db` migrat, import/undo/eliminar compte de prova via HTTP (confirmant que `backupDbFile()` es dispara), i reinici del servidor confirmant que les dades hi són intactes.
 
 ### Pendent / coses obertes
 
 - **[OBERT] de l'especificació, sense confirmar encara**: despesa difusa a la previsió (fase 4), llindar d'alerta de saldo mínim, i mecanisme de conciliació entre un compromís confirmat i el moviment bancari real que el liquida (§4.2, veure sub-fase 3.6).
-- **Fase 3 (recurrents) iniciada**: l'usuari ha confirmat començar-la, per sub-fases. Pla acordat i documentat a `especificacio.md` (§4.1, §4.2, §6 punt 3): 3.1 model de dades unificat (recurrents: detectat/manual/importat), 3.2 importació de compromisos confirmats (factures de proveïdor, Excel), 3.3 motor de detecció de periodicitat, 3.4 pantalla de revisió/confirmació unificada, 3.5 exclusions i cas de targetes, 3.6 conciliació (disseny només, frontera amb Fase 4). Cap sub-fase implementada encara.
+- **Fase 3 (recurrents) iniciada**: l'usuari ha confirmat començar-la, per sub-fases. Pla acordat i documentat a `especificacio.md` (§4.1, §4.2, §6 punt 3): **3.1 model de dades unificat — FET** (vegeu historial); 3.2 importació de compromisos confirmats (factures de proveïdor, Excel), 3.3 motor de detecció de periodicitat, 3.4 pantalla de revisió/confirmació unificada, 3.5 exclusions i cas de targetes, 3.6 conciliació (disseny només, frontera amb Fase 4) — encara no implementades.
+- **Recurrents (3.1) és backend-only per ara**: sense pantalla al frontend (llistar/crear/eliminar només via API `/api/recurrents`). La UI arriba amb 3.2 (formulari d'importació) i 3.4 (pantalla de revisió).
 - **Fase 4 (previsió)**: no iniciada.
 - **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
+
+### 2026-07-12 — Sub-fase 3.1: model de dades unificat de recurrents (backend)
+
+Primera sub-fase de la Fase 3 implementada, seguint el pla acordat a l'entrada anterior. Abans d'escriure codi es van preguntar explícitament tres decisions de disseny que afectaven l'esquema:
+
+- **Deduplicació dels compromisos importats**: igual que els moviments bancaris, id determinista = hash(compte, data de venciment, import, concepte normalitzat) — `computeRecurrentHash` a `lib/hash.ts` (seed propi, mai col·lideix amb `computeMovimentHash`/`computeContrapartidaId`). Reimportar el mateix fitxer de factures no duplicarà files (la lògica d'importació pròpiament dita és de la sub-fase 3.2; aquesta sub-fase només deixa la funció de hash preparada).
+- **Relació amb la detecció automàtica (3.3)**: els compromisos manuals/importats NO alimenten el motor de detecció de patrons — són sempre entrades independents/soltes. Més senzill i predictible.
+- **Fi de vigència d'un recurrent confirmat**: eliminació directa (sense soft-delete), coherent amb la resta de l'app.
+
+Implementació:
+
+- `backend/src/db/migrations/005_recurrents.sql`: taula `recurrents` (`compte_id`, `concepte`, `concepte_normalitzat`, `periodicitat`, `import_cents`, `data_prevista`, `categoria_id`, `referencia`, `origen`, `estat`) + índexs per compte/data/categoria. Cap `CHECK` constraint a l'esquema (coherent amb la resta de taules: la validació de valors permesos viu als tipus TS, no a SQLite).
+- `db/types.ts`: `Recurrent` + tipus literals `PeriodicitatRecurrent` (inclou `unica`, per a un venciment puntual no repetitiu), `OrigenRecurrent` (`detectat`/`manual`/`importat`), `EstatRecurrent` (`confirmat`/`ignorat` — `suggerit` mai es persisteix; un candidat detectat i encara no revisat es recalcularà en calent a la sub-fase 3.3/3.4).
+- `db/operations.ts`: `listRecurrents`, `creaRecurrentManual` (origen sempre `manual`, estat sempre `confirmat`; valida que el compte i, si s'indica, la categoria existeixin), `eliminaRecurrent`. Integrat a `exportaCopiaSeguretat`/`importaCopiaSeguretat` (amb `?? []` per compatibilitat amb còpies antigues) i a `reinicialitzaBaseDades` (neteja `recurrents` en el reset complet). **No** s'ha tocat `eliminaTotsElsMoviments`: els recurrents no deriven dels moviments, així que eliminar-los tots no n'ha d'esborrar cap.
+- `routes.ts`: `GET/POST /api/recurrents`, `DELETE /api/recurrents/:id`.
+- Tests nous: 6 a `hash.test.ts` (`computeRecurrentHash`) + 9 a `operations.test.ts` (creació manual, `unica` amb categoria/referència, validacions, eliminació, roundtrip de còpia de seguretat, `reinicialitzaBaseDades`, `eliminaTotsElsMoviments` sense efecte) — 131 tests backend en total. Verificat també amb `tsc -b` i, manualment, arrencant el servidor contra una base de dades temporal i exercint els tres endpoints nous per HTTP (crear, llistar, esborrar, error de compte/categoria inexistents, inclusió a `/api/backup`).
+- **Sense UI encara** — aquesta sub-fase és només model + API. La pantalla per crear/veure recurrents arriba amb les sub-fases 3.2 (importació) i 3.4 (revisió/confirmació).
 
 ### 2026-07-12 — Fase 3 (recurrents): pla de sub-fases acordat i documentat a `especificacio.md`
 

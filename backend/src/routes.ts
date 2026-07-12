@@ -7,6 +7,7 @@ import { applyColumnMapping, type ColumnMapping } from './parsers/columnMapping.
 import { importFile, readRawTable } from './parsers/importFile.ts';
 import type { AccountType, BankId, ParsedMoviment } from './parsers/types.ts';
 import type { SuggerimentTransferencia } from './lib/internalTransfers.ts';
+import type { PeriodicitatRecurrent } from './db/types.ts';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -190,6 +191,38 @@ router.post('/liquidacions/desmarca', (req, res) => {
   const { movimentId } = req.body as { movimentId: string };
   ops.desmarcaLiquidacioTargeta(movimentId);
   res.json({ ok: true });
+});
+
+// --- Recurrents (spec 4.1, 4.2) ---
+
+router.get('/recurrents', (_req, res) => {
+  res.json(ops.listRecurrents());
+});
+
+router.post('/recurrents', (req, res) => {
+  const { compteId, concepte, periodicitat, importCents, dataPrevista, categoriaId, referencia } = req.body as {
+    compteId: string;
+    concepte: string;
+    periodicitat: PeriodicitatRecurrent;
+    importCents: number;
+    dataPrevista: string;
+    categoriaId?: string;
+    referencia?: string;
+  };
+  try {
+    res.status(201).json(ops.creaRecurrentManual({ compteId, concepte, periodicitat, importCents, dataPrevista, categoriaId, referencia }));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+router.delete('/recurrents/:id', (req, res) => {
+  try {
+    ops.eliminaRecurrent(req.params.id);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 // --- Còpia de seguretat ---

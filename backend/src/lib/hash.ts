@@ -65,3 +65,24 @@ export function computeMovimentHash(input: MovimentHashInput): string {
 export function computeContrapartidaId(movimentOrigenId: string): string {
   return cyrb53(`contrapartida-liquidacio-targeta:${movimentOrigenId}`, 1);
 }
+
+export interface RecurrentHashInput {
+  compteId: string;
+  dataPrevista: string;
+  importCents: number;
+  concepteOriginal: string;
+}
+
+/**
+ * Deterministic id for a compromís importat (especificacio.md 4.2, sub-fase
+ * 3.2): hash of (compte, data de venciment, import, concepte normalitzat).
+ * Reimportar el mateix fitxer de factures reprodueix els mateixos ids, així
+ * que les files ja existents s'ignoren en lloc de duplicar-se — mateix
+ * mecanisme que computeMovimentHash per als moviments bancaris, amb un seed
+ * propi perquè cap fila d'aquest espai d'ids col·lideixi mai amb un moviment
+ * o una contrapartida de liquidació.
+ */
+export function computeRecurrentHash(input: RecurrentHashInput): string {
+  const key = [input.compteId, input.dataPrevista, input.importCents, normalizeConceptForDedup(input.concepteOriginal)].join('|');
+  return cyrb53(key, 2);
+}

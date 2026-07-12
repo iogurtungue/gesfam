@@ -2,7 +2,18 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { backupDbFile } from './backupFile.ts';
 import { getDb } from './client.ts';
-import type { Categoria, Compte, LotImportacio, Moviment, ReglaCategoritzacio, ReglaLiquidacioTargeta } from './types.ts';
+import type {
+  Categoria,
+  Compte,
+  EstatRecurrent,
+  LotImportacio,
+  Moviment,
+  OrigenRecurrent,
+  PeriodicitatRecurrent,
+  Recurrent,
+  ReglaCategoritzacio,
+  ReglaLiquidacioTargeta,
+} from './types.ts';
 import { splitNousIDuplicats } from '../dedup/index.ts';
 import { pickCategoriaId } from '../lib/categorization.ts';
 import { normalizeConceptForDedup } from '../lib/concept.ts';
@@ -722,6 +733,113 @@ export function marcaLiquidacioTargeta(movimentCorrentId: string, targetaCompteI
   return resultat;
 }
 
+// --- Recurrents (especificacio.md 4.1, 4.2) ---
+//
+// Un recurrent és, indistintament, un patró detectat automàticament sobre
+// l'històric (origen='detectat', motor de detecció de la sub-fase 3.3,
+// encara no implementat) o un compromís confirmat introduït per l'usuari,
+// manualment o per importació (origen='manual'/'importat'; periodicitat
+// 'unica' per a un venciment puntual no repetitiu, p. ex. una factura de
+// proveïdor concreta). Aquesta sub-fase (3.1) només cobreix el model i el
+// manteniment manual (llistar, crear, eliminar); la importació de fitxers
+// (3.2) i el motor de detecció (3.3) són sub-fases posteriors.
+
+interface RecurrentRow {
+  id: string;
+  compte_id: string;
+  concepte: string;
+  concepte_normalitzat: string;
+  periodicitat: string;
+  import_cents: number;
+  data_prevista: string;
+  categoria_id: string | null;
+  referencia: string | null;
+  origen: string;
+  estat: string;
+}
+
+function rowToRecurrent(row: RecurrentRow): Recurrent {
+  return {
+    id: row.id,
+    compteId: row.compte_id,
+    concepte: row.concepte,
+    concepteNormalitzat: row.concepte_normalitzat,
+    periodicitat: row.periodicitat as PeriodicitatRecurrent,
+    importCents: row.import_cents,
+    dataPrevista: row.data_prevista,
+    categoriaId: row.categoria_id ?? undefined,
+    referencia: row.referencia ?? undefined,
+    origen: row.origen as OrigenRecurrent,
+    estat: row.estat as EstatRecurrent,
+  };
+}
+
+function existeixCompte(compteId: string): boolean {
+  return getDb().prepare('SELECT 1 FROM comptes WHERE id = ?').get(compteId) !== undefined;
+}
+
+export function listRecurrents(): Recurrent[] {
+  return (getDb().prepare('SELECT * FROM recurrents').all() as unknown as RecurrentRow[]).map(rowToRecurrent);
+}
+
+/** Crea un recurrent manual (spec 4.1.5: "afegir manualment recurrents que l'algorisme no ha vist"), sempre confirmat directament — l'usuari ja n'ha decidit conscientment l'import i la data. */
+export function creaRecurrentManual(data: {
+  compteId: string;
+  concepte: string;
+  periodicitat: PeriodicitatRecurrent;
+  importCents: number;
+  dataPrevista: string;
+  categoriaId?: string;
+  referencia?: string;
+}): Recurrent {
+  if (!existeixCompte(data.compteId)) {
+    throw new Error('El compte indicat no existeix.');
+  }
+  if (data.categoriaId !== undefined && !existeixCategoria(data.categoriaId)) {
+    throw new Error(`La categoria "${data.categoriaId}" no existeix.`);
+  }
+  const recurrent: Recurrent = {
+    id: randomUUID(),
+    compteId: data.compteId,
+    concepte: data.concepte,
+    concepteNormalitzat: normalizeConceptForDedup(data.concepte),
+    periodicitat: data.periodicitat,
+    importCents: data.importCents,
+    dataPrevista: data.dataPrevista,
+    categoriaId: data.categoriaId,
+    referencia: data.referencia,
+    origen: 'manual',
+    estat: 'confirmat',
+  };
+  getDb()
+    .prepare(
+      `INSERT INTO recurrents
+        (id, compte_id, concepte, concepte_normalitzat, periodicitat, import_cents, data_prevista, categoria_id, referencia, origen, estat)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+    .run(
+      recurrent.id,
+      recurrent.compteId,
+      recurrent.concepte,
+      recurrent.concepteNormalitzat,
+      recurrent.periodicitat,
+      recurrent.importCents,
+      recurrent.dataPrevista,
+      recurrent.categoriaId ?? null,
+      recurrent.referencia ?? null,
+      recurrent.origen,
+      recurrent.estat,
+    );
+  return recurrent;
+}
+
+export function eliminaRecurrent(id: string): void {
+  if (!getDb().prepare('SELECT 1 FROM recurrents WHERE id = ?').get(id)) {
+    throw new Error('El recurrent indicat no existeix.');
+  }
+  getDb().prepare('DELETE FROM recurrents WHERE id = ?').run(id);
+}
+
 // --- Còpia de seguretat (NFR secció 2) ---
 
 export interface Backup {
@@ -734,6 +852,7 @@ export interface Backup {
   regles: ReglaCategoritzacio[];
   reglesLiquidacio: ReglaLiquidacioTargeta[];
   transferenciesDescartades: SuggerimentTransferencia[];
+  recurrents: Recurrent[];
 }
 
 export function exportaCopiaSeguretat(): Backup {
@@ -747,6 +866,7 @@ export function exportaCopiaSeguretat(): Backup {
     regles: listRegles(),
     reglesLiquidacio: listReglesLiquidacio(),
     transferenciesDescartades: listTransferenciesDescartades(),
+    recurrents: listRecurrents(),
   };
 }
 
@@ -756,7 +876,7 @@ export function importaCopiaSeguretat(backup: Backup): void {
   const db = getDb();
   transaction(db, () => {
     db.exec(
-      'DELETE FROM transferencies_descartades; DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM categories; DELETE FROM comptes;',
+      'DELETE FROM recurrents; DELETE FROM transferencies_descartades; DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM categories; DELETE FROM comptes;',
     );
 
     const insertCompte = db.prepare(
@@ -816,6 +936,28 @@ export function importaCopiaSeguretat(backup: Backup): void {
     const insertDescartada = db.prepare('INSERT OR IGNORE INTO transferencies_descartades (id, moviment_a_id, moviment_b_id) VALUES (?, ?, ?)');
     // `transferenciesDescartades` no existia en còpies de seguretat anteriors a aquesta funcionalitat.
     for (const t of backup.transferenciesDescartades ?? []) insertDescartada.run(clauParella(t.a, t.b), t.a, t.b);
+
+    const insertRecurrent = db.prepare(
+      `INSERT INTO recurrents
+        (id, compte_id, concepte, concepte_normalitzat, periodicitat, import_cents, data_prevista, categoria_id, referencia, origen, estat)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    );
+    // `recurrents` no existia en còpies de seguretat anteriors a aquesta funcionalitat.
+    for (const r of backup.recurrents ?? []) {
+      insertRecurrent.run(
+        r.id,
+        r.compteId,
+        r.concepte,
+        r.concepteNormalitzat,
+        r.periodicitat,
+        r.importCents,
+        r.dataPrevista,
+        r.categoriaId ?? null,
+        r.referencia ?? null,
+        r.origen,
+        r.estat,
+      );
+    }
   });
 }
 
@@ -832,7 +974,7 @@ export function reinicialitzaBaseDades(): void {
   const db = getDb();
   transaction(db, () => {
     db.exec(
-      'DELETE FROM transferencies_descartades; DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM categories; DELETE FROM comptes;',
+      'DELETE FROM recurrents; DELETE FROM transferencies_descartades; DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM categories; DELETE FROM comptes;',
     );
     const insert = db.prepare('INSERT INTO categories (id, nom) VALUES (?, ?)');
     for (const nom of DEFAULT_CATEGORIES) insert.run(randomUUID(), nom);

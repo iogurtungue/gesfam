@@ -9,6 +9,7 @@ const {
   commitImport,
   confirmaTransferencia,
   countMovimentsCompte,
+  creaRecurrentManual,
   createCategoria,
   createCompte,
   createRegla,
@@ -18,11 +19,15 @@ const {
   desmarcaLiquidacioTargeta,
   eliminaCompte,
   eliminaMoviment,
+  eliminaRecurrent,
   eliminaTotsElsMoviments,
+  exportaCopiaSeguretat,
+  importaCopiaSeguretat,
   listCategories,
   listComptes,
   listLots,
   listMovimentsPerComptes,
+  listRecurrents,
   listReglesLiquidacio,
   listRegles,
   listTransferenciesDescartades,
@@ -37,7 +42,7 @@ const {
 
 beforeEach(() => {
   getDb().exec(
-    'DELETE FROM transferencies_descartades; DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM categories; DELETE FROM comptes;',
+    'DELETE FROM recurrents; DELETE FROM transferencies_descartades; DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM categories; DELETE FROM comptes;',
   );
 });
 
@@ -528,5 +533,125 @@ describe('reinicialitzaBaseDades', () => {
     expect(categories.length).toBeGreaterThan(0);
     expect(categories.map((c) => c.nom)).toContain('Subministraments');
     expect(categories.map((c) => c.nom)).not.toContain('Categoria manual');
+  });
+});
+
+describe('recurrents (sub-fase 3.1, especificacio.md 4.1/4.2)', () => {
+  it('creaRecurrentManual creates a confirmed, manual-origin recurrent', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+
+    const recurrent = creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Lloguer pis',
+      periodicitat: 'mensual',
+      importCents: -85000,
+      dataPrevista: '2026-08-01',
+    });
+
+    expect(recurrent.origen).toBe('manual');
+    expect(recurrent.estat).toBe('confirmat');
+    expect(recurrent.concepteNormalitzat).toBe('LLOGUER PIS');
+    expect(listRecurrents()).toEqual([recurrent]);
+  });
+
+  it('creaRecurrentManual accepts periodicitat "unica" for a one-off due date, and an optional categoria/referencia', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const categoria = createCategoria('Proveïdors');
+
+    const recurrent = creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Factura Proveïdor XYZ SL',
+      periodicitat: 'unica',
+      importCents: -125000,
+      dataPrevista: '2026-09-15',
+      categoriaId: categoria.id,
+      referencia: 'FRA-2026-0042',
+    });
+
+    expect(recurrent.periodicitat).toBe('unica');
+    expect(recurrent.categoriaId).toBe(categoria.id);
+    expect(recurrent.referencia).toBe('FRA-2026-0042');
+  });
+
+  it('creaRecurrentManual throws for a compte that does not exist', () => {
+    expect(() =>
+      creaRecurrentManual({ compteId: 'no-existeix', concepte: 'Test', periodicitat: 'mensual', importCents: -100, dataPrevista: '2026-08-01' }),
+    ).toThrow();
+  });
+
+  it('creaRecurrentManual throws for a categoriaId that does not exist', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    expect(() =>
+      creaRecurrentManual({
+        compteId: compte.id,
+        concepte: 'Test',
+        periodicitat: 'mensual',
+        importCents: -100,
+        dataPrevista: '2026-08-01',
+        categoriaId: 'no-existeix',
+      }),
+    ).toThrow();
+  });
+
+  it('eliminaRecurrent removes the entry', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const recurrent = creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Test',
+      periodicitat: 'anual',
+      importCents: -5000,
+      dataPrevista: '2027-01-01',
+    });
+
+    eliminaRecurrent(recurrent.id);
+
+    expect(listRecurrents()).toEqual([]);
+  });
+
+  it('eliminaRecurrent throws for an id that does not exist', () => {
+    expect(() => eliminaRecurrent('no-existeix')).toThrow();
+  });
+
+  it('is included in the JSON backup export/import round-trip', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const recurrent = creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Assegurança',
+      periodicitat: 'anual',
+      importCents: -30000,
+      dataPrevista: '2027-03-01',
+    });
+
+    const backup = exportaCopiaSeguretat();
+    expect(backup.recurrents).toEqual([recurrent]);
+
+    importaCopiaSeguretat(backup);
+
+    expect(listRecurrents()).toEqual([recurrent]);
+  });
+
+  it('reinicialitzaBaseDades also wipes recurrents', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    creaRecurrentManual({ compteId: compte.id, concepte: 'Test', periodicitat: 'mensual', importCents: -100, dataPrevista: '2026-08-01' });
+
+    reinicialitzaBaseDades();
+
+    expect(listRecurrents()).toEqual([]);
+  });
+
+  it('eliminaTotsElsMoviments does not affect recurrents (they are not derived from moviments)', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    commitImport(compte, [mov('2026-06-01', 'Test', -100)], 'test.txt');
+    const recurrent = creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Test',
+      periodicitat: 'mensual',
+      importCents: -100,
+      dataPrevista: '2026-08-01',
+    });
+
+    eliminaTotsElsMoviments();
+
+    expect(listRecurrents()).toEqual([recurrent]);
   });
 });

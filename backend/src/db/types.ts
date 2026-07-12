@@ -74,3 +74,36 @@ export interface ReglaLiquidacioTargeta {
   patro: string;
   targetaCompteId: string;
 }
+
+/** `unica` = un venciment puntual, no repetitiu (p. ex. una factura de proveïdor concreta). Les altres representen una obligació que es repeteix amb aquesta cadència (especificacio.md 4.1, 4.2). */
+export type PeriodicitatRecurrent = 'unica' | 'setmanal' | 'mensual' | 'bimestral' | 'trimestral' | 'semestral' | 'anual';
+
+/** `detectat` = patró trobat pel motor de periodicitat sobre l'històric (sub-fase 3.3, encara no implementada); `manual`/`importat` = introduït directament per l'usuari amb import i data certs, no estimats. */
+export type OrigenRecurrent = 'detectat' | 'manual' | 'importat';
+
+/**
+ * `suggerit` no s'arriba a persistir mai: un candidat detectat i encara no
+ * revisat es recalcula en calent (sub-fase 3.3/3.4) i només es converteix en
+ * una fila real quan l'usuari pren una decisió (confirmar o ignorar).
+ */
+export type EstatRecurrent = 'confirmat' | 'ignorat';
+
+/** Compromís recurrent o puntual (especificacio.md 4.1, 4.2): patró de despesa/ingrés detectat automàticament, o compromís confirmat introduït manualment o per importació (p. ex. una factura de proveïdor amb venciment conegut). */
+export interface Recurrent {
+  id: string;
+  compteId: string;
+  /** Text tal com apareix (nom de proveïdor, descripció...). */
+  concepte: string;
+  concepteNormalitzat: string;
+  periodicitat: PeriodicitatRecurrent;
+  /** Cèntims, amb signe: negatiu = despesa, positiu = ingrés. Import cert per a manual/importat; estimat (mediana) per a detectat. */
+  importCents: number;
+  /** ISO date: per a `unica`, la data de venciment; per a periodicitats repetitives, la propera ocurrència prevista (les següents es calculen a partir d'aquesta, Fase 4). */
+  dataPrevista: string;
+  /** Referència a Categoria.id */
+  categoriaId?: string;
+  /** Núm. de factura o similar, només informatiu. */
+  referencia?: string;
+  origen: OrigenRecurrent;
+  estat: EstatRecurrent;
+}
