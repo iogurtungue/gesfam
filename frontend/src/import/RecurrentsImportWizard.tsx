@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { confirmaImportacioRecurrents, previsualitzaImportacioRecurrents } from '../api/client';
 import type { Compte, ParsedRecurrentImport } from '../api/types';
+import { formatDateEs } from '../lib/dates';
 import { centsToEs } from '../lib/numbers';
 
 interface Props {
@@ -91,7 +92,7 @@ export function RecurrentsImportWizard({ comptes, onChanged }: Props) {
                 <tbody>
                   {recurrents.slice(0, 15).map((r, i) => (
                     <tr key={i}>
-                      <td style={cellStyle}>{r.dataPrevista}</td>
+                      <td style={cellStyle}>{formatDateEs(r.dataPrevista)}</td>
                       <td style={cellStyle}>{r.concepte}</td>
                       <td style={{ ...cellStyle, textAlign: 'right' }}>{centsToEs(r.importCents, false)}</td>
                       <td style={cellStyle}>{r.categoriaNom ?? '—'}</td>

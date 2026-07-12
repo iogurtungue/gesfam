@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { actualitzaRecurrent, eliminaRecurrent } from '../api/client';
 import type { Categoria, Compte, PeriodicitatRecurrent, Recurrent } from '../api/types';
+import { formatDateEs } from '../lib/dates';
 import { centsToEs } from '../lib/numbers';
 import { PERIODICITAT_LABEL, TOTES_LES_PERIODICITATS } from '../lib/periodicitat';
 
@@ -185,8 +186,8 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
             ) : (
               <tr key={r.id}>
                 <td style={cellStyle}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
-                <td style={cellStyle}>{r.dataPrevista}</td>
-                <td style={cellStyle}>{r.dataFi ?? '—'}</td>
+                <td style={cellStyle}>{formatDateEs(r.dataPrevista)}</td>
+                <td style={cellStyle}>{r.dataFi ? formatDateEs(r.dataFi) : '—'}</td>
                 <td style={cellStyle}>{r.concepte}</td>
                 <td style={{ ...cellStyle, textAlign: 'right' }} title={r.importAproximat ? 'Import aproximat (estimació)' : 'Import cert'}>
                   {r.importAproximat && '≈ '}

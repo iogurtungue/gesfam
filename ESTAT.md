@@ -133,6 +133,16 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-12 — Dates dels recurrents en format dd/mm/aaaa (spec secció 2)
+
+Les dates de text pla a les taules de recurrents es mostraven en format ISO (`2026-08-05`) en lloc de la convenció espanyola (`05/08/2026`) que ja fa servir la resta de l'aplicació (`formatDateEs`, `lib/dates.ts`) — un descuit d'aquesta funcionalitat nova, no un canvi de comportament nou.
+
+- `import/RecurrentsList.tsx`: columnes "Data" i "Data fi" de la fila de només lectura.
+- `import/RecurrentsImportWizard.tsx`: columna "Venciment" de la previsualització abans de confirmar.
+- Els `<input type="date">` (formularis d'edició/candidats/creació des de Moviments) no es toquen — el seu `value` ha de seguir sent ISO (`yyyy-mm-dd`) per l'estàndard HTML; el navegador ja mostra el selector de data en el format local de l'usuari automàticament.
+
+`tsc -b`/`oxlint`/`vite build` nets.
+
 ### 2026-07-12 — Bug: alguns candidats mostraven una data passada com a "propera"
 
 L'usuari va detectar que la "propera data prevista" d'alguns candidats era anterior a avui. Causa: `analitzaGrup` calculava la propera ocurrència com "última ocurrència real + 1 període", sense tenir en compte si feia temps que no arribaven moviments nous d'aquest concepte — si l'última ocurrència era, per exemple, de fa 4 mesos, "+1 mes" seguia quedant al passat.
