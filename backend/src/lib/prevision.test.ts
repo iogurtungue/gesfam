@@ -82,6 +82,56 @@ describe('projectaEsdeveniments', () => {
     expect(esdeveniments.map((e) => e.data)).toEqual(['2026-07-15', '2026-08-15']);
   });
 
+  it('projects an overdue unica (not yet conciliated) at today, flagged as vençut', () => {
+    const esdeveniments = projectaEsdeveniments(
+      [recurrent({ periodicitat: 'unica', dataPrevista: '2026-06-01' })],
+      [],
+      30,
+      AVUI,
+    );
+
+    expect(esdeveniments).toEqual([
+      { data: AVUI, compteId: 'compte-1', concepte: 'CONCEPTE', importCents: -5000, recurrentId: 'r1', vençut: true },
+    ]);
+  });
+
+  it('does not flag a future unica as vençut', () => {
+    const esdeveniments = projectaEsdeveniments(
+      [recurrent({ periodicitat: 'unica', dataPrevista: '2026-07-20' })],
+      [],
+      30,
+      AVUI,
+    );
+
+    expect(esdeveniments[0].vençut).toBeUndefined();
+  });
+
+  it('conciliates an overdue unica against the original due date, not against today', () => {
+    // The real payment happened on 2026-06-02, close to the original due date (2026-06-01),
+    // far from today (2026-07-12) — conciliation must anchor on the original date.
+    const moviments: MovimentPerConciliacio[] = [{ compteId: 'compte-1', dataOperacio: '2026-06-02', importCents: -5000 }];
+
+    const esdeveniments = projectaEsdeveniments(
+      [recurrent({ periodicitat: 'unica', dataPrevista: '2026-06-01' })],
+      moviments,
+      30,
+      AVUI,
+    );
+
+    expect(esdeveniments).toEqual([]);
+  });
+
+  it('does not clamp an overdue unica past its own dataFi', () => {
+    const esdeveniments = projectaEsdeveniments(
+      [recurrent({ periodicitat: 'unica', dataPrevista: '2026-06-01', dataFi: '2026-06-05' })],
+      [],
+      30,
+      AVUI,
+    );
+
+    expect(esdeveniments).toEqual([]);
+  });
+
   it('stops projecting past dataFi', () => {
     const esdeveniments = projectaEsdeveniments([recurrent({ dataFi: '2026-07-15' })], [], 90, AVUI);
 

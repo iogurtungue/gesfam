@@ -243,6 +243,8 @@ export interface EsdevenimentPrevist {
   importCents: number;
   recurrentId: string;
   categoriaId?: string;
+  /** Només per a compromisos puntuals: la data prevista original ja havia passat i encara no s'ha conciliat, així que es mostra avui en lloc de desaparèixer. */
+  vençut?: boolean;
 }
 
 export interface PuntSerieDiaria {

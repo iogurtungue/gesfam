@@ -138,9 +138,19 @@ export function Previsio({ seleccionats, categories }: Props) {
             </thead>
             <tbody>
               {files.map(({ esdeveniment: e, saldoPerCompte }) => (
-                <tr key={`${e.recurrentId}-${e.data}`}>
+                <tr key={`${e.recurrentId}-${e.data}`} style={e.vençut ? { background: '#fff3e0' } : undefined}>
                   <td style={{ ...cellStyle, ...cellData }}>{formatDateEs(e.data)}</td>
-                  <td style={{ ...cellStyle, ...cellConcepte }}>{e.concepte}</td>
+                  <td style={{ ...cellStyle, ...cellConcepte }}>
+                    {e.concepte}
+                    {e.vençut && (
+                      <span
+                        title="La data prevista original ja havia passat i encara no s'ha conciliat amb cap moviment real; es mostra avui perquè no quedi fora de la previsió."
+                        style={{ color: '#d90', marginLeft: 6, fontWeight: 'bold' }}
+                      >
+                        ⚠ vençut
+                      </span>
+                    )}
+                  </td>
                   <td style={{ ...cellStyle, ...cellCategoria }}>{e.categoriaId ? (categoriaNom.get(e.categoriaId) ?? '—') : '—'}</td>
                   {seleccionats.map((c) => {
                     const saldo = saldoPerCompte[c.id];

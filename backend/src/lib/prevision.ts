@@ -25,6 +25,8 @@ export interface EsdevenimentPrevist {
   importCents: number;
   recurrentId: string;
   categoriaId?: string;
+  /** Només per a `unica`: la `dataPrevista` original ja havia passat (i encara no s'ha conciliat) quan es va calcular la previsió, així que es mostra avui en lloc de desaparèixer sense avís. */
+  vençut?: boolean;
 }
 
 export interface PuntSerieDiaria {
@@ -70,11 +72,14 @@ function avancaPeriodicitat(data: string, periodicitat: Exclude<PeriodicitatRecu
  * Motor de projecció (especificacio.md 4.3, sub-fase 4.1): calcula, per a cada
  * recurrent confirmat, quines ocurrències futures (avui inclòs) cauen dins
  * l'horitzó, aplicant la conciliació (3.6) — si ja hi ha un moviment real
- * semblant a prop de la data prevista, no es projecta. Les ocurrències
- * anteriors a avui es salten sense comprovar conciliació (mai es projecta el
- * passat); per a un recurrent periòdic amb `dataPrevista` desfasada, això
- * avança silenciosament fins a la primera ocurrència futura. Pura funció —
- * no llegeix ni escriu la base de dades.
+ * semblant a prop de la data prevista, no es projecta. Per a un recurrent
+ * periòdic amb `dataPrevista` desfasada, s'avança silenciosament (sense
+ * comprovar conciliació de les ocurrències saltades) fins a la primera
+ * ocurrència que ja no sigui anterior a avui. Un compromís puntual (`unica`)
+ * amb `dataPrevista` passada i encara no conciliat, en canvi, no desapareix:
+ * es projecta avui mateix, marcat `vençut: true` perquè es pugui distingir a
+ * la UI d'un venciment que realment és avui. Pura funció — no llegeix ni
+ * escriu la base de dades.
  */
 export function projectaEsdeveniments(
   recurrents: RecurrentPerProjeccio[],
@@ -86,6 +91,24 @@ export function projectaEsdeveniments(
   const esdeveniments: EsdevenimentPrevist[] = [];
 
   for (const r of recurrents) {
+    if (r.periodicitat === 'unica') {
+      if (r.dataPrevista > dataLimit) continue;
+      const vençut = r.dataPrevista < avui;
+      const data = vençut ? avui : r.dataPrevista;
+      if (r.dataFi && data > r.dataFi) continue;
+      if (esConciliat(r.compteId, r.dataPrevista, r.importCents, movimentsPerConciliacio)) continue;
+      esdeveniments.push({
+        data,
+        compteId: r.compteId,
+        concepte: r.concepte,
+        importCents: r.importCents,
+        recurrentId: r.id,
+        categoriaId: r.categoriaId,
+        ...(vençut && { vençut: true }),
+      });
+      continue;
+    }
+
     let data = r.dataPrevista;
     while (data <= dataLimit) {
       if (r.dataFi && data > r.dataFi) break;
@@ -101,7 +124,6 @@ export function projectaEsdeveniments(
         });
       }
 
-      if (r.periodicitat === 'unica') break;
       data = avancaPeriodicitat(data, r.periodicitat);
     }
   }
