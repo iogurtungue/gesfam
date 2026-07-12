@@ -14,6 +14,7 @@ import {
   cellReferencia,
   cellStyle,
   cellPeriodicitat,
+  inputCompletCella,
 } from '../lib/recurrentsTable';
 
 interface Props {
@@ -165,7 +166,7 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
                   <input type="date" value={esborrany.dataFi} onChange={(e) => actualitzaEsborrany(c, { dataFi: e.target.value })} />
                 </td>
                 <td style={{ ...cellStyle, ...cellConcepte }}>
-                  <input value={esborrany.concepte} onChange={(e) => actualitzaEsborrany(c, { concepte: e.target.value })} style={{ width: '100%' }} />
+                  <input value={esborrany.concepte} onChange={(e) => actualitzaEsborrany(c, { concepte: e.target.value })} style={inputCompletCella} />
                 </td>
                 <td style={{ ...cellStyle, ...cellImport }}>
                   <input
@@ -204,7 +205,7 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
                   <input
                     value={esborrany.referencia}
                     onChange={(e) => actualitzaEsborrany(c, { referencia: e.target.value })}
-                    style={{ width: '100%' }}
+                    style={inputCompletCella}
                   />
                 </td>
                 <td style={{ ...cellStyle, ...cellAccions }}>

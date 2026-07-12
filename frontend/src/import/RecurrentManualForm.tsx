@@ -13,6 +13,7 @@ import {
   cellReferencia,
   cellStyle,
   cellPeriodicitat,
+  inputCompletCella,
 } from '../lib/recurrentsTable';
 
 interface Props {
@@ -117,7 +118,7 @@ export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
               <input type="date" value={dataFi} onChange={(e) => setDataFi(e.target.value)} />
             </td>
             <td style={{ ...cellStyle, ...cellConcepte }}>
-              <input value={concepte} onChange={(e) => setConcepte(e.target.value)} style={{ width: '100%' }} />
+              <input value={concepte} onChange={(e) => setConcepte(e.target.value)} style={inputCompletCella} />
             </td>
             <td style={{ ...cellStyle, ...cellImport }}>
               <input type="number" step="0.01" value={importEuros} onChange={(e) => setImportEuros(e.target.value)} style={{ width: 70, textAlign: 'right' }} />
@@ -137,7 +138,7 @@ export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
             </td>
             <td style={{ ...cellStyle, ...cellOrigen }}>Manual</td>
             <td style={{ ...cellStyle, ...cellReferencia }}>
-              <input value={referencia} onChange={(e) => setReferencia(e.target.value)} style={{ width: '100%' }} />
+              <input value={referencia} onChange={(e) => setReferencia(e.target.value)} style={inputCompletCella} />
             </td>
             <td style={{ ...cellStyle, ...cellAccions }}>
               <button onClick={handleAfegeix} disabled={busy}>

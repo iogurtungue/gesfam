@@ -21,3 +21,12 @@ export const cellCategoria: CSSProperties = amplaFixa(175);
 export const cellOrigen: CSSProperties = amplaFixa(110);
 export const cellReferencia: CSSProperties = amplaFixa(125);
 export const cellAccions: CSSProperties = amplaFixa(170);
+
+/**
+ * Per a un `<input>` que ha d'omplir tota la cel·la (Concepte, Referència):
+ * cal `boxSizing: 'border-box'` explícit perquè un input HTML és
+ * `content-box` per defecte — `width: 100%` s'hi sumaria al seu propi
+ * padding/border, sobreeixint de la cel·la (que té `overflow: hidden` via
+ * `amplaFixa`) i deixant el requadre tallat, no visible sencer.
+ */
+export const inputCompletCella: CSSProperties = { width: '100%', boxSizing: 'border-box' };

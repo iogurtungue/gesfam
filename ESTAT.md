@@ -133,6 +133,15 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-12 — Bug: el requadre d'edició de Referència es veia tallat
+
+L'usuari va detectar que, en editar el camp Referència, el requadre no es veia sencer. Causa: un `<input>` HTML és `content-box` per defecte, així que `width: '100%'` fet servir sense `boxSizing: 'border-box'` es sumava al padding/border propis de l'input, sobreeixint de la cel·la — que té `overflow: hidden` (via `amplaFixa`) — i tallant visualment el requadre. Afectava per igual el camp Concepte, encara que no s'hagués reportat.
+
+- `lib/recurrentsTable.ts`: nou `inputCompletCella` (`{ width: '100%', boxSizing: 'border-box' }`), font única per a qualsevol input que hagi d'omplir tota la cel·la.
+- Aplicat als camps Concepte i Referència a `RecurrentsList.tsx`, `RecurrentsCandidatsList.tsx` i `RecurrentManualForm.tsx` (6 llocs en total).
+
+`tsc -b`/`oxlint`/`vite build` nets.
+
 ### 2026-07-12 — Recurrents: tercer ajust, Referència a 125px
 
 `lib/recurrentsTable.ts`: `cellReferencia` de 110px a 125px (les altres columnes sense canvis respecte a l'entrada anterior).

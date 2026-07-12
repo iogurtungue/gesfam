@@ -15,6 +15,7 @@ import {
   cellReferencia,
   cellStyle,
   cellPeriodicitat,
+  inputCompletCella,
 } from '../lib/recurrentsTable';
 
 interface Props {
@@ -153,7 +154,7 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
                   <input type="date" value={esborrany.dataFi} onChange={(e) => setEsborrany({ ...esborrany, dataFi: e.target.value })} />
                 </td>
                 <td style={{ ...cellStyle, ...cellConcepte }}>
-                  <input value={esborrany.concepte} onChange={(e) => setEsborrany({ ...esborrany, concepte: e.target.value })} style={{ width: '100%' }} />
+                  <input value={esborrany.concepte} onChange={(e) => setEsborrany({ ...esborrany, concepte: e.target.value })} style={inputCompletCella} />
                 </td>
                 <td style={{ ...cellStyle, ...cellImport }}>
                   <input
@@ -184,7 +185,7 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
                 </td>
                 <td style={{ ...cellStyle, ...cellOrigen }}>{r.origen}</td>
                 <td style={{ ...cellStyle, ...cellReferencia }}>
-                  <input value={esborrany.referencia} onChange={(e) => setEsborrany({ ...esborrany, referencia: e.target.value })} style={{ width: '100%' }} />
+                  <input value={esborrany.referencia} onChange={(e) => setEsborrany({ ...esborrany, referencia: e.target.value })} style={inputCompletCella} />
                 </td>
                 <td style={{ ...cellStyle, ...cellAccions }}>
                   <button onClick={() => handleDesa(r.id)} disabled={desant}>
