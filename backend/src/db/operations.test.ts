@@ -18,6 +18,7 @@ const {
   descartaTransferencia,
   deleteReglaLiquidacio,
   desmarcaLiquidacioTargeta,
+  detectaCandidatsRecurrents,
   eliminaCompte,
   eliminaMoviment,
   eliminaRecurrent,
@@ -37,6 +38,7 @@ const {
   reinicialitzaBaseDades,
   renombraCategoria,
   setMovimentCategoria,
+  setTransferenciaInterna,
   suggereixLiquidacionsTargeta,
   suggereixTransferencies,
   undoLot,
@@ -740,5 +742,102 @@ describe('importaRecurrents (sub-fase 3.2, especificacio.md 4.2)', () => {
 
     expect(nous).toBe(0);
     expect(duplicats).toBe(1);
+  });
+});
+
+describe('detectaCandidatsRecurrents (sub-fase 3.3, especificacio.md 4.1)', () => {
+  function importaMensual(compte: Parameters<typeof commitImport>[0], concepte: string, importCents: number, fitxer = 'test.txt') {
+    commitImport(
+      compte,
+      ['2026-01-05', '2026-02-05', '2026-03-05'].map((data) => mov(data, concepte, importCents)),
+      fitxer,
+    );
+  }
+
+  it('detects a candidate from corrent-account movements', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    importaMensual(corrent, 'NETFLIX', -1200);
+
+    const [candidat] = detectaCandidatsRecurrents();
+
+    expect(candidat).toMatchObject({ compteId: corrent.id, periodicitat: 'mensual', importEstimatCents: -1200 });
+  });
+
+  it('excludes targeta movements from detection (only corrent for now, per sub-fase 3.5)', () => {
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    importaMensual(targeta, 'NETFLIX', -1200);
+
+    expect(detectaCandidatsRecurrents()).toEqual([]);
+  });
+
+  it('excludes movements marked as internal transfer', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    importaMensual(corrent, 'TRANSFERENCIA PROPIA', -50000);
+    for (const m of listMovimentsPerComptes([corrent.id])) {
+      setTransferenciaInterna(m.id, true);
+    }
+
+    expect(detectaCandidatsRecurrents()).toEqual([]);
+  });
+
+  it('excludes a corrent charge marked as a card settlement (and its virtual card counterpart) from detection', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    for (const data of ['2026-01-05', '2026-02-05', '2026-03-05']) {
+      commitImport(corrent, [mov(data, 'LIQUIDACION TARGETA', -20000)], 'test.txt');
+    }
+    for (const carrec of listMovimentsPerComptes([corrent.id])) {
+      marcaLiquidacioTargeta(carrec.id, targeta.id);
+    }
+
+    expect(detectaCandidatsRecurrents()).toEqual([]);
+  });
+
+  it('does not re-surface a candidate once a matching recurrent is already confirmed', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    importaMensual(corrent, 'NETFLIX', -1200);
+    expect(detectaCandidatsRecurrents()).toHaveLength(1);
+
+    creaRecurrentManual({ compteId: corrent.id, concepte: 'NETFLIX', periodicitat: 'mensual', importCents: -1200, dataPrevista: '2026-04-05' });
+
+    expect(detectaCandidatsRecurrents()).toEqual([]);
+  });
+
+  it('does not re-surface a candidate once ignored (estat=ignorat)', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    importaMensual(corrent, 'NETFLIX', -1200);
+    expect(detectaCandidatsRecurrents()).toHaveLength(1);
+
+    getDb()
+      .prepare(
+        `INSERT INTO recurrents (id, compte_id, concepte, concepte_normalitzat, periodicitat, import_cents, data_prevista, origen, estat)
+         VALUES ('ignorat-1', ?, 'NETFLIX', 'NETFLIX', 'mensual', -1200, '2026-04-05', 'detectat', 'ignorat')`,
+      )
+      .run(corrent.id);
+
+    expect(detectaCandidatsRecurrents()).toEqual([]);
+  });
+
+  it('matches an existing recurrent by recomputing the fuzzy key from its raw concepte, even if its stored concepteNormalitzat used the stricter dedup normalization', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    importaMensual(corrent, 'RECIBO ENDESA REF 0012345', -4500);
+    expect(detectaCandidatsRecurrents()).toHaveLength(1);
+
+    // creaRecurrentManual stores concepteNormalitzat via the dedup normalization (spec 3.3), which keeps the
+    // reference number — unlike the fuzzy recurrence normalization used for detection grouping.
+    creaRecurrentManual({
+      compteId: corrent.id,
+      concepte: 'RECIBO ENDESA REF 0012345',
+      periodicitat: 'mensual',
+      importCents: -4500,
+      dataPrevista: '2026-04-05',
+    });
+
+    expect(detectaCandidatsRecurrents()).toEqual([]);
+  });
+
+  it('returns an empty list when there are no corrent accounts at all', () => {
+    createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    expect(detectaCandidatsRecurrents()).toEqual([]);
   });
 });

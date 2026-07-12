@@ -17,10 +17,11 @@ import type {
 import { splitNousIDuplicats } from '../dedup/index.ts';
 import { splitNousRecurrentsIDuplicats } from '../dedup/recurrents.ts';
 import { pickCategoriaId } from '../lib/categorization.ts';
-import { normalizeConceptForDedup } from '../lib/concept.ts';
+import { normalizeConceptForDedup, normalizeConceptForRecurrence } from '../lib/concept.ts';
 import { computeContrapartidaId } from '../lib/hash.ts';
 import { suggereixTransferenciesInternes, type SuggerimentTransferencia } from '../lib/internalTransfers.ts';
 import { pickTargetaLiquidacio } from '../lib/liquidacioTargeta.ts';
+import { detectaRecurrents, type CandidatRecurrent, type MovimentCandidat } from '../lib/recurrenceDetection.ts';
 import type { ParsedRecurrentImport } from '../parsers/recurrentsFile.ts';
 import type { AccountType, BankId, ParsedMoviment } from '../parsers/types.ts';
 
@@ -893,6 +894,39 @@ export function importaRecurrents(compteId: string, parsed: ParsedRecurrentImpor
   }
 
   return { nous: nous.length, duplicats };
+}
+
+/**
+ * Motor de detecció de periodicitat (sub-fase 3.3, especificacio.md 4.1):
+ * calcula candidats sobre l'històric real, sense persistir res (es
+ * recalculen a cada crida, com decidit a la 3.1). Només moviments de compte
+ * corrent (les targetes s'incorporaran a la 3.5, quan es resolgui la seva
+ * relació amb la data de liquidació), exclosos els marcats com a
+ * transferència interna i les contrapartides virtuals de liquidació (spec
+ * 3.2.1) — cap dels dos representa consum real. Un candidat no es torna a
+ * mostrar si ja existeix un recurrent confirmat o ignorat pel mateix
+ * (compte, concepte normalitzat per a recurrència, signe): la comparació es
+ * fa recalculant `normalizeConceptForRecurrence` sobre el `concepte` cru de
+ * cada recurrent ja existent, no sobre el seu `concepteNormalitzat`
+ * emmagatzemat — aquest es va guardar amb la normalització de
+ * deduplicació (3.1/3.2), més estricta, que no coincideix necessàriament
+ * amb la normalització difusa usada aquí per agrupar.
+ */
+export function detectaCandidatsRecurrents(): CandidatRecurrent[] {
+  const comptesCorrent = new Set(listComptes().filter((c) => c.tipus === 'corrent').map((c) => c.id));
+  if (comptesCorrent.size === 0) return [];
+
+  const moviments: MovimentCandidat[] = listAllMoviments()
+    .filter((m) => comptesCorrent.has(m.compteId) && !m.esTransferenciaInterna && !m.movimentOrigenId)
+    .map((m) => ({ id: m.id, compteId: m.compteId, dataOperacio: m.dataOperacio, concepteOriginal: m.concepteOriginal, importCents: m.importCents }));
+
+  const clausJaDecidides = new Set(
+    listRecurrents().map((r) => `${r.compteId}|${normalizeConceptForRecurrence(r.concepte)}|${Math.sign(r.importCents)}`),
+  );
+
+  return detectaRecurrents(moviments).filter(
+    (c) => !clausJaDecidides.has(`${c.compteId}|${c.concepteNormalitzat}|${Math.sign(c.importEstimatCents)}`),
+  );
 }
 
 // --- Còpia de seguretat (NFR secció 2) ---

@@ -226,6 +226,12 @@ router.delete('/recurrents/:id', (req, res) => {
   }
 });
 
+// --- Motor de detecció de periodicitat (spec 4.1, sub-fase 3.3) ---
+
+router.get('/recurrents/candidats', (_req, res) => {
+  res.json(ops.detectaCandidatsRecurrents());
+});
+
 // --- Importació de compromisos confirmats (spec 4.2, sub-fase 3.2) ---
 
 router.post('/recurrents/importacio/previsualitza', upload.single('fitxer'), (req, res) => {
