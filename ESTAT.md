@@ -131,6 +131,15 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - Verificació manual en navegador (clic a clic) de la migració encara pendent per part de l'usuari — la verificació feta fins ara ha estat via API (curl) i tests automatitzats, no interacció real amb la UI.
 - Cap canvi d'aquesta migració s'ha commitejat ni pujat encara (últim commit `2b68f78`, Fase 2 + correccions).
 
+### 2026-07-12 — Presentació a Moviments: les transferències internes ja no es mostren atenuades; la columna Liquidació s'atenua llevat de les marcades
+
+L'usuari va demanar dos ajustos visuals a la taula de Moviments, sense canvis de dades ni de lògica:
+
+- Les files marcades com a transferència interna es mostraven amb `opacity: 0.6` (tota la fila en gris). Ara es mostren igual que la resta de moviments — l'usuari ho considerava massa atenuat per a un moviment normal i vàlid, no una anomalia.
+- La columna "Liquidació" es mostra ara atenuada (`opacity: 0.5`) per defecte (tant les cel·les buides com el selector "marca com a liquidació" d'un càrrec de compte corrent, com el text "contrapartida"), **llevat** de les files que ja tenen una liquidació de targeta marcada (`m.esLiquidacioTargetaId`), que es mostren amb opacitat normal per destacar-les visualment de la resta.
+
+`frontend/src/views/MovimentsList.tsx`: eliminat l'`style` condicional de la `<tr>` basat en `esTransferenciaInterna`; afegit `opacity: 0.5` condicional a la `<td>` de la columna Liquidació (basat en `m.esLiquidacioTargetaId`).
+
 ### 2026-07-11 — Bug de zona horària: les dates d'ING sortien un dia enrere (+ migració de l'històric)
 
 L'usuari va observar una discrepància entre la data d'un extracte d'ING que importava i la data que sortia a la pàgina de Moviments (sempre un dia abans). Reproduït i confirmat amb una prova aïllada usant `xlsx` (la mateixa llibreria i configuració `cellDates:true` que fa servir `excelTable.ts`) en aquest mateix procés (Europe/Madrid): una cel·la de data real d'Excel es descodifica com un `Date` ancorat a la **mitjanit local** de la màquina que llegeix, no a la mitjanit UTC — `isoFromUTCDate` (ara `isoFromDateCell`) llegia els components amb `getUTC*`, que per a qualsevol fus per davant d'UTC (Madrid, sempre +1/+2) dona sistemàticament el dia anterior. Només ING es veu afectat: és l'únic banc el fitxer del qual arriba com a cel·la de data real d'Excel (BBVA i la resta fan servir text).

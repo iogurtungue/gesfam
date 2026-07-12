@@ -508,7 +508,7 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
           <tbody>
             {filtrats.map((m) => (
               <Fragment key={m.id}>
-                <tr style={m.esTransferenciaInterna ? { opacity: 0.6 } : undefined}>
+                <tr>
                   <td style={{ ...cellStyle, ...cellData }}>{formatDateEs(m.dataOperacio)}</td>
                   <td style={{ ...cellStyle, ...cellConcepte }}>{m.concepteOriginal}</td>
                   <td style={{ ...cellStyle, ...cellCategoria }}>
@@ -542,7 +542,11 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
                       onChange={(e) => handleTransferenciaChange(m.id, e.target.checked)}
                     />
                   </td>
-                  {targetes.length > 0 && <td style={{ ...cellStyle, ...cellLiquidacio }}>{cellaLiquidacio(m)}</td>}
+                  {targetes.length > 0 && (
+                    <td style={{ ...cellStyle, ...cellLiquidacio, ...(m.esLiquidacioTargetaId ? undefined : { opacity: 0.5 }) }}>
+                      {cellaLiquidacio(m)}
+                    </td>
+                  )}
                   {seleccionats.map((c) => {
                     if (c.id === m.compteId) {
                       return (
