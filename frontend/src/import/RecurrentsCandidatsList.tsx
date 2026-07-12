@@ -118,11 +118,11 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
       <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
         <thead>
           <tr>
+            <th style={cellStyle}>Compte</th>
             <th style={cellStyle}>Data</th>
             <th style={cellStyle}>Data fi</th>
             <th style={cellStyle}>Concepte</th>
             <th style={{ ...cellStyle, textAlign: 'right' }}>Import</th>
-            <th style={cellStyle}>Compte</th>
             <th style={cellStyle}>Periodicitat</th>
             <th style={cellStyle}>Categoria</th>
             <th style={cellStyle}>Detecció</th>
@@ -136,6 +136,7 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
             const k = clau(c);
             return (
               <tr key={k}>
+                <td style={cellStyle}>{compteAlias.get(c.compteId) ?? c.compteId}</td>
                 <td style={cellStyle}>
                   <input type="date" value={esborrany.dataPrevista} onChange={(e) => actualitzaEsborrany(c, { dataPrevista: e.target.value })} />
                 </td>
@@ -162,7 +163,6 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
                     aprox.
                   </label>
                 </td>
-                <td style={cellStyle}>{compteAlias.get(c.compteId) ?? c.compteId}</td>
                 <td style={cellStyle}>
                   <select value={esborrany.periodicitat} onChange={(e) => actualitzaEsborrany(c, { periodicitat: e.target.value as PeriodicitatRecurrent })}>
                     {PERIODICITATS_REPETITIVES.map((p) => (

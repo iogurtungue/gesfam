@@ -104,11 +104,11 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
       <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
         <thead>
           <tr>
+            <th style={cellStyle}>Compte</th>
             <th style={cellStyle}>Data</th>
             <th style={cellStyle}>Data fi</th>
             <th style={cellStyle}>Concepte</th>
             <th style={{ ...cellStyle, textAlign: 'right' }}>Import</th>
-            <th style={cellStyle}>Compte</th>
             <th style={cellStyle}>Periodicitat</th>
             <th style={cellStyle}>Categoria</th>
             <th style={cellStyle}>Origen</th>
@@ -120,6 +120,7 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
           {ordenats.map((r) =>
             editant === r.id && esborrany ? (
               <tr key={r.id}>
+                <td style={cellStyle}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
                 <td style={cellStyle}>
                   <input type="date" value={esborrany.dataPrevista} onChange={(e) => setEsborrany({ ...esborrany, dataPrevista: e.target.value })} />
                 </td>
@@ -146,7 +147,6 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
                     aprox.
                   </label>
                 </td>
-                <td style={cellStyle}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
                 <td style={cellStyle}>
                   <select
                     value={esborrany.periodicitat}
@@ -184,6 +184,7 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
               </tr>
             ) : (
               <tr key={r.id}>
+                <td style={cellStyle}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
                 <td style={cellStyle}>{r.dataPrevista}</td>
                 <td style={cellStyle}>{r.dataFi ?? '—'}</td>
                 <td style={cellStyle}>{r.concepte}</td>
@@ -191,7 +192,6 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
                   {r.importAproximat && '≈ '}
                   {centsToEs(r.importCents, false)}
                 </td>
-                <td style={cellStyle}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
                 <td style={cellStyle}>{PERIODICITAT_LABEL[r.periodicitat]}</td>
                 <td style={cellStyle}>{r.categoriaId ? (categoriaNom.get(r.categoriaId) ?? '—') : '—'}</td>
                 <td style={cellStyle}>{r.origen}</td>

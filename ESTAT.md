@@ -137,7 +137,8 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 Feedback de l'usuari: els candidats detectats (targetes independents amb etiquetes en línia) i els recurrents confirmats (taula) no compartien format, i cap dels dos estava ordenat per compte.
 
 - `import/RecurrentsList.tsx`: ordenació ara per (àlies del compte, data prevista) en lloc de només data prevista.
-- `import/RecurrentsCandidatsList.tsx`: reescrit com a taula amb exactament les mateixes columnes que `RecurrentsList` (Data, Data fi, Concepte, Import, Compte, Periodicitat, Categoria, Referència, accions), mateixa ordenació per (compte, data). La columna "Origen" es substitueix per "Detecció" (nombre d'ocurrències i confiança, amb el rang d'import complet en el `title`) ja que un candidat encara no té un origen persistit. S'hi afegeix també un camp de Referència (abans no existia per a candidats) perquè es pugui omplir abans de confirmar, aprofitant que `confirmaCandidatRecurrent` ja acceptava aquest camp.
+- `import/RecurrentsCandidatsList.tsx`: reescrit com a taula amb exactament les mateixes columnes que `RecurrentsList` (Compte, Data, Data fi, Concepte, Import, Periodicitat, Categoria, Referència, accions), mateixa ordenació per (compte, data). La columna "Origen" es substitueix per "Detecció" (nombre d'ocurrències i confiança, amb el rang d'import complet en el `title`) ja que un candidat encara no té un origen persistit. S'hi afegeix també un camp de Referència (abans no existia per a candidats) perquè es pugui omplir abans de confirmar, aprofitant que `confirmaCandidatRecurrent` ja acceptava aquest camp.
+- Seguit immediat: l'usuari ha demanat que la columna "Compte" sigui la primera (abans anava després de l'import) a totes dues taules — ja aplicat a la llista de dalt.
 
 `tsc -b`/`oxlint`/`vite build` nets. Sense verificació clic a clic en un navegador real (no hi ha eina de navegador disponible en aquesta sessió).
 
