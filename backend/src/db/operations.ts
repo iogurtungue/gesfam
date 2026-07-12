@@ -785,8 +785,7 @@ export function listRecurrents(): Recurrent[] {
   return (getDb().prepare('SELECT * FROM recurrents').all() as unknown as RecurrentRow[]).map(rowToRecurrent);
 }
 
-/** Crea un recurrent manual (spec 4.1.5: "afegir manualment recurrents que l'algorisme no ha vist"), sempre confirmat directament — l'usuari ja n'ha decidit conscientment l'import i la data. */
-export function creaRecurrentManual(data: {
+export interface DadesRecurrent {
   compteId: string;
   concepte: string;
   periodicitat: PeriodicitatRecurrent;
@@ -794,7 +793,9 @@ export function creaRecurrentManual(data: {
   dataPrevista: string;
   categoriaId?: string;
   referencia?: string;
-}): Recurrent {
+}
+
+function inserirRecurrent(data: DadesRecurrent, origen: OrigenRecurrent, estat: EstatRecurrent): Recurrent {
   if (!existeixCompte(data.compteId)) {
     throw new Error('El compte indicat no existeix.');
   }
@@ -811,8 +812,8 @@ export function creaRecurrentManual(data: {
     dataPrevista: data.dataPrevista,
     categoriaId: data.categoriaId,
     referencia: data.referencia,
-    origen: 'manual',
-    estat: 'confirmat',
+    origen,
+    estat,
   };
   getDb()
     .prepare(
@@ -834,6 +835,66 @@ export function creaRecurrentManual(data: {
       recurrent.estat,
     );
   return recurrent;
+}
+
+/** Crea un recurrent manual (spec 4.1.5: "afegir manualment recurrents que l'algorisme no ha vist"), sempre confirmat directament — l'usuari ja n'ha decidit conscientment l'import i la data. */
+export function creaRecurrentManual(data: DadesRecurrent): Recurrent {
+  return inserirRecurrent(data, 'manual', 'confirmat');
+}
+
+/** Confirma un candidat detectat (sub-fase 3.4, especificacio.md 4.1.5): l'usuari pot haver corregit periodicitat/import/data/categoria abans de confirmar-lo — la "confiança" i el rang d'import del candidat no es persisteixen (només són senyals de revisió, no dades del recurrent). */
+export function confirmaCandidatRecurrent(data: DadesRecurrent): Recurrent {
+  return inserirRecurrent(data, 'detectat', 'confirmat');
+}
+
+/** Descarta un candidat detectat (falsa alarma): no torna a aparèixer a detectaCandidatsRecurrents per a la mateixa clau (compte, concepte, signe), sense necessitat que l'usuari en corregeixi cap camp. */
+export function ignoraCandidatRecurrent(data: DadesRecurrent): Recurrent {
+  return inserirRecurrent(data, 'detectat', 'ignorat');
+}
+
+/** Corregeix un recurrent ja existent (manual, importat o confirmat des d'un candidat) — spec 4.1.5 "corregir". Recalcula concepteNormalitzat si el concepte canvia. */
+export function actualitzaRecurrent(
+  id: string,
+  data: Partial<{ concepte: string; periodicitat: PeriodicitatRecurrent; importCents: number; dataPrevista: string; categoriaId: string | null; referencia: string | null }>,
+): void {
+  if (!getDb().prepare('SELECT 1 FROM recurrents WHERE id = ?').get(id)) {
+    throw new Error('El recurrent indicat no existeix.');
+  }
+  if (data.categoriaId != null && !existeixCategoria(data.categoriaId)) {
+    throw new Error(`La categoria "${data.categoriaId}" no existeix.`);
+  }
+
+  const assignacions: string[] = [];
+  const valors: (string | number | null)[] = [];
+  if (data.concepte !== undefined) {
+    assignacions.push('concepte = ?', 'concepte_normalitzat = ?');
+    valors.push(data.concepte, normalizeConceptForDedup(data.concepte));
+  }
+  if (data.periodicitat !== undefined) {
+    assignacions.push('periodicitat = ?');
+    valors.push(data.periodicitat);
+  }
+  if (data.importCents !== undefined) {
+    assignacions.push('import_cents = ?');
+    valors.push(data.importCents);
+  }
+  if (data.dataPrevista !== undefined) {
+    assignacions.push('data_prevista = ?');
+    valors.push(data.dataPrevista);
+  }
+  if (data.categoriaId !== undefined) {
+    assignacions.push('categoria_id = ?');
+    valors.push(data.categoriaId);
+  }
+  if (data.referencia !== undefined) {
+    assignacions.push('referencia = ?');
+    valors.push(data.referencia);
+  }
+  if (assignacions.length === 0) return;
+  valors.push(id);
+  getDb()
+    .prepare(`UPDATE recurrents SET ${assignacions.join(', ')} WHERE id = ?`)
+    .run(...valors);
 }
 
 export function eliminaRecurrent(id: string): void {

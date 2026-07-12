@@ -3,10 +3,12 @@ import type {
   Backup,
   BackupFileInfo,
   BankId,
+  CandidatRecurrent,
   Categoria,
   ColumnMapping,
   CommitImportResult,
   Compte,
+  DadesRecurrent,
   ImportaRecurrentsResult,
   ImportOutcome,
   LotImportacio,
@@ -192,16 +194,15 @@ export function listRecurrents(): Promise<Recurrent[]> {
   return req('/recurrents');
 }
 
-export function creaRecurrentManual(data: {
-  compteId: string;
-  concepte: string;
-  periodicitat: PeriodicitatRecurrent;
-  importCents: number;
-  dataPrevista: string;
-  categoriaId?: string;
-  referencia?: string;
-}): Promise<Recurrent> {
+export function creaRecurrentManual(data: DadesRecurrent): Promise<Recurrent> {
   return req('/recurrents', { method: 'POST', ...json(data) });
+}
+
+export function actualitzaRecurrent(
+  id: string,
+  data: Partial<{ concepte: string; periodicitat: PeriodicitatRecurrent; importCents: number; dataPrevista: string; categoriaId: string | null; referencia: string | null }>,
+): Promise<void> {
+  return req(`/recurrents/${id}`, { method: 'PATCH', ...json(data) });
 }
 
 export function eliminaRecurrent(id: string): Promise<void> {
@@ -216,6 +217,20 @@ export async function previsualitzaImportacioRecurrents(file: File): Promise<Pre
 
 export function confirmaImportacioRecurrents(compteId: string, recurrents: ParsedRecurrentImport[]): Promise<ImportaRecurrentsResult> {
   return req('/recurrents/importacio/confirma', { method: 'POST', ...json({ compteId, recurrents }) });
+}
+
+// --- Motor de detecció de periodicitat (sub-fase 3.3) i revisió (sub-fase 3.4) ---
+
+export function detectaCandidatsRecurrents(): Promise<CandidatRecurrent[]> {
+  return req('/recurrents/candidats');
+}
+
+export function confirmaCandidatRecurrent(data: DadesRecurrent): Promise<Recurrent> {
+  return req('/recurrents/candidats/confirma', { method: 'POST', ...json(data) });
+}
+
+export function ignoraCandidatRecurrent(data: DadesRecurrent): Promise<Recurrent> {
+  return req('/recurrents/candidats/ignora', { method: 'POST', ...json(data) });
 }
 
 // --- Còpia de seguretat ---

@@ -187,6 +187,35 @@ export interface ImportaRecurrentsResult {
   duplicats: number;
 }
 
+/** Payload comú per crear/confirmar/ignorar un recurrent (especificacio.md 4.1.5, sub-fases 3.1/3.4). */
+export interface DadesRecurrent {
+  compteId: string;
+  concepte: string;
+  periodicitat: PeriodicitatRecurrent;
+  importCents: number;
+  dataPrevista: string;
+  categoriaId?: string;
+  referencia?: string;
+}
+
+/** Periodicitats que el motor de detecció pot produir (mai 'unica', reservada a compromisos manuals/importats). */
+export type PeriodicitatDetectable = Exclude<PeriodicitatRecurrent, 'unica'>;
+
+/** Candidat detectat pel motor de periodicitat (sub-fase 3.3), encara no persistit — es recalcula a cada crida. */
+export interface CandidatRecurrent {
+  compteId: string;
+  concepte: string;
+  concepteNormalitzat: string;
+  periodicitat: PeriodicitatDetectable;
+  importEstimatCents: number;
+  importMinCents: number;
+  importMaxCents: number;
+  dataPrevista: string;
+  ocurrencies: number;
+  confianca: number;
+  movimentIds: string[];
+}
+
 export interface CommitImportResult {
   lot: LotImportacio;
   nous: number;

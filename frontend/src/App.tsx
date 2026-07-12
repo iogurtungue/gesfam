@@ -1,20 +1,19 @@
 import { useCallback, useEffect, useState } from 'react';
-import { listCategories, listComptes, listLots, listRecurrents, listRegles } from './api/client';
-import type { Categoria, Compte, LotImportacio, Recurrent, ReglaCategoritzacio } from './api/types';
+import { listCategories, listComptes, listLots, listRegles } from './api/client';
+import type { Categoria, Compte, LotImportacio, ReglaCategoritzacio } from './api/types';
 import { CompteSelector } from './components/CompteSelector';
 import { useCompteSeleccio } from './hooks/useCompteSeleccio';
 import { ImportWizard } from './import/ImportWizard';
 import { LotsList } from './import/LotsList';
-import { RecurrentsImportWizard } from './import/RecurrentsImportWizard';
-import { RecurrentsList } from './import/RecurrentsList';
 import { AccountsManager } from './views/AccountsManager';
 import { CategoriesManager } from './views/CategoriesManager';
 import { Dashboard } from './views/Dashboard';
 import { Maintenance } from './views/Maintenance';
 import { MovimentsList } from './views/MovimentsList';
+import { RecurrentsManager } from './views/RecurrentsManager';
 import { Summary } from './views/Summary';
 
-type Pestanya = 'panell' | 'moviments' | 'resum' | 'categories' | 'comptes' | 'importar' | 'manteniment';
+type Pestanya = 'panell' | 'moviments' | 'resum' | 'categories' | 'comptes' | 'importar' | 'recurrents' | 'manteniment';
 
 const PESTANYES: { id: Pestanya; label: string; ambSelector: boolean }[] = [
   { id: 'panell', label: 'Panell general', ambSelector: true },
@@ -23,6 +22,7 @@ const PESTANYES: { id: Pestanya; label: string; ambSelector: boolean }[] = [
   { id: 'categories', label: 'Categories i regles', ambSelector: false },
   { id: 'comptes', label: 'Comptes', ambSelector: false },
   { id: 'importar', label: 'Importar', ambSelector: false },
+  { id: 'recurrents', label: 'Recurrents', ambSelector: false },
   { id: 'manteniment', label: 'Manteniment', ambSelector: false },
 ];
 
@@ -31,7 +31,6 @@ function App() {
   const [lots, setLots] = useState<LotImportacio[]>([]);
   const [categories, setCategories] = useState<Categoria[]>([]);
   const [regles, setRegles] = useState<ReglaCategoritzacio[]>([]);
-  const [recurrents, setRecurrents] = useState<Recurrent[]>([]);
   const [pestanya, setPestanya] = useState<Pestanya>('panell');
 
   const seleccio = useCompteSeleccio(comptes);
@@ -41,7 +40,6 @@ function App() {
     listLots().then(setLots);
     listCategories().then(setCategories);
     listRegles().then(setRegles);
-    listRecurrents().then(setRecurrents);
   }, []);
 
   useEffect(() => {
@@ -97,10 +95,9 @@ function App() {
         <>
           <ImportWizard comptes={comptes} onChanged={refresh} />
           <LotsList lots={lots} comptes={comptes} onChanged={refresh} />
-          <RecurrentsImportWizard comptes={comptes} onChanged={refresh} />
-          <RecurrentsList recurrents={recurrents} comptes={comptes} onChanged={refresh} />
         </>
       )}
+      {pestanya === 'recurrents' && <RecurrentsManager comptes={comptes} categories={categories} />}
       {pestanya === 'manteniment' && <Maintenance onReset={refresh} />}
     </div>
   );

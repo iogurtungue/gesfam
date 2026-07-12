@@ -1,31 +1,47 @@
 import { useState } from 'react';
-import { eliminaRecurrent } from '../api/client';
-import type { Compte, Recurrent } from '../api/types';
+import { actualitzaRecurrent, eliminaRecurrent } from '../api/client';
+import type { Categoria, Compte, PeriodicitatRecurrent, Recurrent } from '../api/types';
 import { centsToEs } from '../lib/numbers';
+import { PERIODICITAT_LABEL, TOTES_LES_PERIODICITATS } from '../lib/periodicitat';
 
 interface Props {
   recurrents: Recurrent[];
   comptes: Compte[];
+  categories: Categoria[];
   onChanged: () => void;
 }
 
-const PERIODICITAT_LABEL: Record<Recurrent['periodicitat'], string> = {
-  unica: 'Puntual',
-  setmanal: 'Setmanal',
-  mensual: 'Mensual',
-  bimestral: 'Bimestral',
-  trimestral: 'Trimestral',
-  semestral: 'Semestral',
-  anual: 'Anual',
-};
+interface EsborranyEdicio {
+  concepte: string;
+  periodicitat: PeriodicitatRecurrent;
+  importEuros: string;
+  dataPrevista: string;
+  categoriaId: string;
+  referencia: string;
+}
 
-/** Llistat de consulta dels recurrents ja confirmats (manuals o importats). La pantalla de revisió de candidats detectats arriba amb la sub-fase 3.4. */
-export function RecurrentsList({ recurrents, comptes, onChanged }: Props) {
+function esborranyDe(r: Recurrent): EsborranyEdicio {
+  return {
+    concepte: r.concepte,
+    periodicitat: r.periodicitat,
+    importEuros: (r.importCents / 100).toString(),
+    dataPrevista: r.dataPrevista,
+    categoriaId: r.categoriaId ?? '',
+    referencia: r.referencia ?? '',
+  };
+}
+
+/** Llistat dels recurrents ja confirmats (manuals, importats o confirmats des d'un candidat detectat), amb edició i eliminació (sub-fase 3.4). */
+export function RecurrentsList({ recurrents, comptes, categories, onChanged }: Props) {
   const [eliminant, setEliminant] = useState<string | null>(null);
+  const [editant, setEditant] = useState<string | null>(null);
+  const [esborrany, setEsborrany] = useState<EsborranyEdicio | null>(null);
+  const [desant, setDesant] = useState(false);
   const compteAlias = new Map(comptes.map((c) => [c.id, c.alias]));
+  const categoriaNom = new Map(categories.map((c) => [c.id, c.nom]));
 
   async function handleElimina(id: string) {
-    if (!confirm('Eliminar aquest compromís?')) return;
+    if (!confirm('Eliminar aquest recurrent?')) return;
     setEliminant(id);
     try {
       await eliminaRecurrent(id);
@@ -35,11 +51,37 @@ export function RecurrentsList({ recurrents, comptes, onChanged }: Props) {
     }
   }
 
+  function obreEdicio(r: Recurrent) {
+    setEditant(r.id);
+    setEsborrany(esborranyDe(r));
+  }
+
+  async function handleDesa(id: string) {
+    if (!esborrany) return;
+    const importCents = Math.round(parseFloat(esborrany.importEuros.replace(',', '.')) * 100);
+    if (Number.isNaN(importCents)) return;
+    setDesant(true);
+    try {
+      await actualitzaRecurrent(id, {
+        concepte: esborrany.concepte,
+        periodicitat: esborrany.periodicitat,
+        importCents,
+        dataPrevista: esborrany.dataPrevista,
+        categoriaId: esborrany.categoriaId || null,
+        referencia: esborrany.referencia || null,
+      });
+      setEditant(null);
+      onChanged();
+    } finally {
+      setDesant(false);
+    }
+  }
+
   if (recurrents.length === 0) {
     return (
       <section style={{ marginTop: 24 }}>
-        <h2>Compromisos confirmats</h2>
-        <p style={{ fontSize: '0.9em', color: '#555' }}>Encara no hi ha cap compromís confirmat.</p>
+        <h2>Recurrents confirmats</h2>
+        <p style={{ fontSize: '0.9em', color: '#555' }}>Encara no hi ha cap recurrent confirmat.</p>
       </section>
     );
   }
@@ -48,7 +90,7 @@ export function RecurrentsList({ recurrents, comptes, onChanged }: Props) {
 
   return (
     <section style={{ marginTop: 24 }}>
-      <h2>Compromisos confirmats</h2>
+      <h2>Recurrents confirmats</h2>
       <table style={{ borderCollapse: 'collapse', fontSize: '0.9em' }}>
         <thead>
           <tr>
@@ -57,28 +99,88 @@ export function RecurrentsList({ recurrents, comptes, onChanged }: Props) {
             <th style={{ ...cellStyle, textAlign: 'right' }}>Import</th>
             <th style={cellStyle}>Compte</th>
             <th style={cellStyle}>Periodicitat</th>
+            <th style={cellStyle}>Categoria</th>
             <th style={cellStyle}>Origen</th>
             <th style={cellStyle}>Referència</th>
             <th style={cellStyle}></th>
           </tr>
         </thead>
         <tbody>
-          {ordenats.map((r) => (
-            <tr key={r.id}>
-              <td style={cellStyle}>{r.dataPrevista}</td>
-              <td style={cellStyle}>{r.concepte}</td>
-              <td style={{ ...cellStyle, textAlign: 'right' }}>{centsToEs(r.importCents, false)}</td>
-              <td style={cellStyle}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
-              <td style={cellStyle}>{PERIODICITAT_LABEL[r.periodicitat]}</td>
-              <td style={cellStyle}>{r.origen}</td>
-              <td style={cellStyle}>{r.referencia ?? '—'}</td>
-              <td style={cellStyle}>
-                <button onClick={() => handleElimina(r.id)} disabled={eliminant === r.id} title="Eliminar">
-                  X
-                </button>
-              </td>
-            </tr>
-          ))}
+          {ordenats.map((r) =>
+            editant === r.id && esborrany ? (
+              <tr key={r.id}>
+                <td style={cellStyle}>
+                  <input type="date" value={esborrany.dataPrevista} onChange={(e) => setEsborrany({ ...esborrany, dataPrevista: e.target.value })} />
+                </td>
+                <td style={cellStyle}>
+                  <input value={esborrany.concepte} onChange={(e) => setEsborrany({ ...esborrany, concepte: e.target.value })} style={{ width: '100%' }} />
+                </td>
+                <td style={cellStyle}>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={esborrany.importEuros}
+                    onChange={(e) => setEsborrany({ ...esborrany, importEuros: e.target.value })}
+                    style={{ width: 80, textAlign: 'right' }}
+                  />
+                </td>
+                <td style={cellStyle}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
+                <td style={cellStyle}>
+                  <select
+                    value={esborrany.periodicitat}
+                    onChange={(e) => setEsborrany({ ...esborrany, periodicitat: e.target.value as PeriodicitatRecurrent })}
+                  >
+                    {TOTES_LES_PERIODICITATS.map((p) => (
+                      <option key={p} value={p}>
+                        {PERIODICITAT_LABEL[p]}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td style={cellStyle}>
+                  <select value={esborrany.categoriaId} onChange={(e) => setEsborrany({ ...esborrany, categoriaId: e.target.value })}>
+                    <option value="">--</option>
+                    {categories.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nom}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td style={cellStyle}>{r.origen}</td>
+                <td style={cellStyle}>
+                  <input value={esborrany.referencia} onChange={(e) => setEsborrany({ ...esborrany, referencia: e.target.value })} style={{ width: 80 }} />
+                </td>
+                <td style={cellStyle}>
+                  <button onClick={() => handleDesa(r.id)} disabled={desant}>
+                    Desa
+                  </button>{' '}
+                  <button onClick={() => setEditant(null)} disabled={desant}>
+                    Cancel·la
+                  </button>
+                </td>
+              </tr>
+            ) : (
+              <tr key={r.id}>
+                <td style={cellStyle}>{r.dataPrevista}</td>
+                <td style={cellStyle}>{r.concepte}</td>
+                <td style={{ ...cellStyle, textAlign: 'right' }}>{centsToEs(r.importCents, false)}</td>
+                <td style={cellStyle}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
+                <td style={cellStyle}>{PERIODICITAT_LABEL[r.periodicitat]}</td>
+                <td style={cellStyle}>{r.categoriaId ? (categoriaNom.get(r.categoriaId) ?? '—') : '—'}</td>
+                <td style={cellStyle}>{r.origen}</td>
+                <td style={cellStyle}>{r.referencia ?? '—'}</td>
+                <td style={cellStyle}>
+                  <button onClick={() => obreEdicio(r)} title="Edita">
+                    Edita
+                  </button>{' '}
+                  <button onClick={() => handleElimina(r.id)} disabled={eliminant === r.id} title="Eliminar">
+                    X
+                  </button>
+                </td>
+              </tr>
+            ),
+          )}
         </tbody>
       </table>
     </section>

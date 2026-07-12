@@ -6,8 +6,10 @@ process.env.GESFAM_DB_PATH = ':memory:';
 const { getDb } = await import('./client.ts');
 const {
   actualitzaCompte,
+  actualitzaRecurrent,
   actualitzaRegla,
   commitImport,
+  confirmaCandidatRecurrent,
   confirmaTransferencia,
   countMovimentsCompte,
   creaRecurrentManual,
@@ -24,6 +26,7 @@ const {
   eliminaRecurrent,
   eliminaTotsElsMoviments,
   exportaCopiaSeguretat,
+  ignoraCandidatRecurrent,
   importaCopiaSeguretat,
   importaRecurrents,
   listCategories,
@@ -839,5 +842,110 @@ describe('detectaCandidatsRecurrents (sub-fase 3.3, especificacio.md 4.1)', () =
   it('returns an empty list when there are no corrent accounts at all', () => {
     createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
     expect(detectaCandidatsRecurrents()).toEqual([]);
+  });
+});
+
+describe('confirmaCandidatRecurrent / ignoraCandidatRecurrent / actualitzaRecurrent (sub-fase 3.4, especificacio.md 4.1.5)', () => {
+  function dades(compteId: string, overrides: Partial<Parameters<typeof creaRecurrentManual>[0]> = {}) {
+    return {
+      compteId,
+      concepte: 'NETFLIX',
+      periodicitat: 'mensual' as const,
+      importCents: -1200,
+      dataPrevista: '2026-05-05',
+      ...overrides,
+    };
+  }
+
+  it('confirmaCandidatRecurrent creates a confirmed recurrent with origen=detectat', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+
+    const recurrent = confirmaCandidatRecurrent(dades(compte.id));
+
+    expect(recurrent.origen).toBe('detectat');
+    expect(recurrent.estat).toBe('confirmat');
+    expect(listRecurrents()).toEqual([recurrent]);
+  });
+
+  it('confirmaCandidatRecurrent persists corrections made before confirming (periodicitat/import/data/categoria)', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const categoria = createCategoria('Oci');
+
+    const recurrent = confirmaCandidatRecurrent(dades(compte.id, { periodicitat: 'anual', importCents: -1500, categoriaId: categoria.id }));
+
+    expect(recurrent).toMatchObject({ periodicitat: 'anual', importCents: -1500, categoriaId: categoria.id });
+  });
+
+  it('once confirmed, the same pattern no longer surfaces as a candidate', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    commitImport(
+      compte,
+      ['2026-01-05', '2026-02-05', '2026-03-05'].map((data) => ({
+        dataOperacio: data,
+        dataValor: data,
+        concepteOriginal: 'NETFLIX',
+        importCents: -1200,
+        saldoPosteriorCents: null,
+      })),
+      'test.txt',
+    );
+    const [candidat] = detectaCandidatsRecurrents();
+
+    confirmaCandidatRecurrent({
+      compteId: candidat.compteId,
+      concepte: candidat.concepte,
+      periodicitat: candidat.periodicitat,
+      importCents: candidat.importEstimatCents,
+      dataPrevista: candidat.dataPrevista,
+    });
+
+    expect(detectaCandidatsRecurrents()).toEqual([]);
+  });
+
+  it('ignoraCandidatRecurrent creates an ignored recurrent with origen=detectat', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+
+    const recurrent = ignoraCandidatRecurrent(dades(compte.id));
+
+    expect(recurrent.origen).toBe('detectat');
+    expect(recurrent.estat).toBe('ignorat');
+  });
+
+  it('confirmaCandidatRecurrent/ignoraCandidatRecurrent throw for a compte that does not exist', () => {
+    expect(() => confirmaCandidatRecurrent(dades('no-existeix'))).toThrow();
+    expect(() => ignoraCandidatRecurrent(dades('no-existeix'))).toThrow();
+  });
+
+  it('actualitzaRecurrent updates the given fields and recomputes concepteNormalitzat when concepte changes', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const recurrent = creaRecurrentManual(dades(compte.id));
+
+    actualitzaRecurrent(recurrent.id, { concepte: 'NETFLIX PREMIUM', importCents: -1799 });
+
+    const [actualitzat] = listRecurrents();
+    expect(actualitzat.concepte).toBe('NETFLIX PREMIUM');
+    expect(actualitzat.concepteNormalitzat).toBe('NETFLIX PREMIUM');
+    expect(actualitzat.importCents).toBe(-1799);
+  });
+
+  it('actualitzaRecurrent can clear an optional field by setting it to null', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const categoria = createCategoria('Oci');
+    const recurrent = creaRecurrentManual(dades(compte.id, { categoriaId: categoria.id }));
+
+    actualitzaRecurrent(recurrent.id, { categoriaId: null });
+
+    expect(listRecurrents()[0].categoriaId).toBeUndefined();
+  });
+
+  it('actualitzaRecurrent throws for a recurrent that does not exist', () => {
+    expect(() => actualitzaRecurrent('no-existeix', { importCents: -100 })).toThrow();
+  });
+
+  it('actualitzaRecurrent throws for a categoriaId that does not exist', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const recurrent = creaRecurrentManual(dades(compte.id));
+
+    expect(() => actualitzaRecurrent(recurrent.id, { categoriaId: 'no-existeix' })).toThrow();
   });
 });

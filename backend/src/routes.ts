@@ -7,7 +7,6 @@ import { applyColumnMapping, type ColumnMapping } from './parsers/columnMapping.
 import { importFile, readRawTable } from './parsers/importFile.ts';
 import type { AccountType, BankId, ParsedMoviment } from './parsers/types.ts';
 import type { SuggerimentTransferencia } from './lib/internalTransfers.ts';
-import type { PeriodicitatRecurrent } from './db/types.ts';
 import { parseRecurrentsFile, type ParsedRecurrentImport } from './parsers/recurrentsFile.ts';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
@@ -201,17 +200,17 @@ router.get('/recurrents', (_req, res) => {
 });
 
 router.post('/recurrents', (req, res) => {
-  const { compteId, concepte, periodicitat, importCents, dataPrevista, categoriaId, referencia } = req.body as {
-    compteId: string;
-    concepte: string;
-    periodicitat: PeriodicitatRecurrent;
-    importCents: number;
-    dataPrevista: string;
-    categoriaId?: string;
-    referencia?: string;
-  };
   try {
-    res.status(201).json(ops.creaRecurrentManual({ compteId, concepte, periodicitat, importCents, dataPrevista, categoriaId, referencia }));
+    res.status(201).json(ops.creaRecurrentManual(req.body as ops.DadesRecurrent));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+router.patch('/recurrents/:id', (req, res) => {
+  try {
+    ops.actualitzaRecurrent(req.params.id, req.body as Parameters<typeof ops.actualitzaRecurrent>[1]);
+    res.json({ ok: true });
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }
@@ -226,10 +225,26 @@ router.delete('/recurrents/:id', (req, res) => {
   }
 });
 
-// --- Motor de detecció de periodicitat (spec 4.1, sub-fase 3.3) ---
+// --- Motor de detecció de periodicitat (spec 4.1, sub-fase 3.3) i revisió (sub-fase 3.4) ---
 
 router.get('/recurrents/candidats', (_req, res) => {
   res.json(ops.detectaCandidatsRecurrents());
+});
+
+router.post('/recurrents/candidats/confirma', (req, res) => {
+  try {
+    res.status(201).json(ops.confirmaCandidatRecurrent(req.body as ops.DadesRecurrent));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+router.post('/recurrents/candidats/ignora', (req, res) => {
+  try {
+    res.status(201).json(ops.ignoraCandidatRecurrent(req.body as ops.DadesRecurrent));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
 });
 
 // --- Importació de compromisos confirmats (spec 4.2, sub-fase 3.2) ---
