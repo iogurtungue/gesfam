@@ -204,7 +204,7 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
                   <input
                     value={esborrany.referencia}
                     onChange={(e) => actualitzaEsborrany(c, { referencia: e.target.value })}
-                    style={{ width: 80 }}
+                    style={{ width: '100%' }}
                   />
                 </td>
                 <td style={{ ...cellStyle, ...cellAccions }}>

@@ -184,7 +184,7 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
                 </td>
                 <td style={{ ...cellStyle, ...cellOrigen }}>{r.origen}</td>
                 <td style={{ ...cellStyle, ...cellReferencia }}>
-                  <input value={esborrany.referencia} onChange={(e) => setEsborrany({ ...esborrany, referencia: e.target.value })} style={{ width: 80 }} />
+                  <input value={esborrany.referencia} onChange={(e) => setEsborrany({ ...esborrany, referencia: e.target.value })} style={{ width: '100%' }} />
                 </td>
                 <td style={{ ...cellStyle, ...cellAccions }}>
                   <button onClick={() => handleDesa(r.id)} disabled={desant}>

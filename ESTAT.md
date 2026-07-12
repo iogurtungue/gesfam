@@ -133,6 +133,14 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-12 — Recurrents: segon ajust de mides de columna + requadre de Referència a amplada completa
+
+Segon ajust d'amplada sobre `lib/recurrentsTable.ts`, demanat directament en píxels: Data/Data fi a 125px, Categoria a 175px, Referència a 110px (Compte/Periodicitat/Import/Origen sense canvis).
+
+- `import/RecurrentsList.tsx` i `import/RecurrentsCandidatsList.tsx`: el requadre d'edició de Referència tenia una amplada fixa de 80px que ja no s'ajustava a la nova amplada de columna — canviat a `width: '100%'` (mateix criteri que Concepte i que ja feia servir `RecurrentManualForm`), així sempre omple la cel·la independentment de futurs ajustos d'amplada.
+
+`tsc -b`/`oxlint`/`vite build` nets.
+
 ### 2026-07-12 — Recurrents: mides de columna ajustades i el formulari manual també en taula
 
 Ajustos concrets d'amplada demanats per l'usuari sobre `lib/recurrentsTable.ts` (font única de les tres seccions):
