@@ -5,6 +5,7 @@ import { centsToEs } from '../lib/numbers';
 import {
   aplicaReglesAMovimentsSenseCategoria,
   confirmaTransferencia,
+  creaRecurrentManual,
   createRegla,
   descartaTransferencia,
   desmarcaLiquidacioTargeta,
@@ -16,7 +17,8 @@ import {
   suggereixLiquidacionsTargeta,
   suggereixTransferencies,
 } from '../api/client';
-import type { Categoria, Compte, Moviment, ReglaCategoritzacio, SuggerimentAmbDetall, SuggerimentLiquidacio } from '../api/types';
+import type { Categoria, Compte, Moviment, PeriodicitatRecurrent, ReglaCategoritzacio, SuggerimentAmbDetall, SuggerimentLiquidacio } from '../api/types';
+import { PERIODICITAT_LABEL, TOTES_LES_PERIODICITATS } from '../lib/periodicitat';
 
 type FiltreTipus = 'tots' | 'ingres' | 'carrec';
 type CampOrdre = 'dataOperacio' | 'concepteOriginal';
@@ -24,6 +26,18 @@ type CampOrdre = 'dataOperacio' | 'concepteOriginal';
 interface FormRegla {
   patro: string;
   categoriaId: string;
+}
+
+interface FormRecurrent {
+  compteId: string;
+  concepte: string;
+  periodicitat: PeriodicitatRecurrent;
+  importEuros: string;
+  importAproximat: boolean;
+  dataPrevista: string;
+  dataFi: string;
+  categoriaId: string;
+  referencia: string;
 }
 
 interface Props {
@@ -51,6 +65,9 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
   const [reglaObertaPer, setReglaObertaPer] = useState<string | null>(null);
   const [formRegla, setFormRegla] = useState<FormRegla | null>(null);
   const [errorRegla, setErrorRegla] = useState<string | null>(null);
+  const [recurrentObertPer, setRecurrentObertPer] = useState<string | null>(null);
+  const [formRecurrent, setFormRecurrent] = useState<FormRecurrent | null>(null);
+  const [errorRecurrent, setErrorRecurrent] = useState<string | null>(null);
   const [suggerimentsLiquidacio, setSuggerimentsLiquidacio] = useState<SuggerimentLiquidacio[]>([]);
   const [seleccioLiquidacio, setSeleccioLiquidacio] = useState<Record<string, string>>({});
   const [avisQuadratura, setAvisQuadratura] = useState<string | null>(null);
@@ -304,6 +321,51 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
       refresh();
     } catch (err) {
       setErrorRegla((err as Error).message);
+    }
+  }
+
+  function obreFormRecurrent(m: Moviment) {
+    setRecurrentObertPer(m.id);
+    setFormRecurrent({
+      compteId: m.compteId,
+      concepte: m.concepteOriginal,
+      periodicitat: 'mensual',
+      importEuros: (m.importCents / 100).toString(),
+      importAproximat: false,
+      dataPrevista: m.dataOperacio,
+      dataFi: '',
+      categoriaId: m.categoriaId ?? '',
+      referencia: '',
+    });
+    setErrorRecurrent(null);
+  }
+
+  function tancaFormRecurrent() {
+    setRecurrentObertPer(null);
+    setFormRecurrent(null);
+    setErrorRecurrent(null);
+  }
+
+  async function handleDesaRecurrent() {
+    if (!formRecurrent || !formRecurrent.concepte.trim() || !formRecurrent.dataPrevista) return;
+    const importCents = Math.round(parseFloat(formRecurrent.importEuros.replace(',', '.')) * 100);
+    if (Number.isNaN(importCents)) return;
+    setErrorRecurrent(null);
+    try {
+      await creaRecurrentManual({
+        compteId: formRecurrent.compteId,
+        concepte: formRecurrent.concepte.trim(),
+        periodicitat: formRecurrent.periodicitat,
+        importCents,
+        importAproximat: formRecurrent.importAproximat,
+        dataPrevista: formRecurrent.dataPrevista,
+        dataFi: formRecurrent.dataFi || undefined,
+        categoriaId: formRecurrent.categoriaId || undefined,
+        referencia: formRecurrent.referencia.trim() || undefined,
+      });
+      tancaFormRecurrent();
+    } catch (err) {
+      setErrorRecurrent((err as Error).message);
     }
   }
 
@@ -580,11 +642,104 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
                     );
                   })}
                   <td style={{ ...cellStyle, ...cellElimina }}>
+                    <button
+                      type="button"
+                      onClick={() => (recurrentObertPer === m.id ? tancaFormRecurrent() : obreFormRecurrent(m))}
+                      title="Crea un recurrent a partir d'aquest moviment"
+                      style={{ fontSize: 12, lineHeight: 1, padding: '1px 3px' }}
+                    >
+                      R
+                    </button>{' '}
                     <button type="button" onClick={() => handleElimina(m)} title="Eliminar aquest moviment" style={{ fontSize: 12, lineHeight: 1, padding: '1px 3px' }}>
                       X
                     </button>
                   </td>
                 </tr>
+                {recurrentObertPer === m.id && formRecurrent && (
+                  <tr>
+                    <td colSpan={(targetes.length > 0 ? 6 : 5) + seleccionats.length * 2} style={{ ...cellStyle, background: '#f7f7f7' }}>
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <strong>Nou recurrent:</strong>
+                        <label>
+                          Concepte:{' '}
+                          <input
+                            value={formRecurrent.concepte}
+                            onChange={(e) => setFormRecurrent({ ...formRecurrent, concepte: e.target.value })}
+                            style={{ width: 200 }}
+                          />
+                        </label>
+                        <label>
+                          Periodicitat:{' '}
+                          <select
+                            value={formRecurrent.periodicitat}
+                            onChange={(e) => setFormRecurrent({ ...formRecurrent, periodicitat: e.target.value as PeriodicitatRecurrent })}
+                          >
+                            {TOTES_LES_PERIODICITATS.map((p) => (
+                              <option key={p} value={p}>
+                                {PERIODICITAT_LABEL[p]}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Import:{' '}
+                          <input
+                            type="number"
+                            step="0.01"
+                            value={formRecurrent.importEuros}
+                            onChange={(e) => setFormRecurrent({ ...formRecurrent, importEuros: e.target.value })}
+                            style={{ width: 80, textAlign: 'right' }}
+                          />
+                        </label>
+                        <label title="L'import és una estimació, no un valor cert">
+                          <input
+                            type="checkbox"
+                            checked={formRecurrent.importAproximat}
+                            onChange={(e) => setFormRecurrent({ ...formRecurrent, importAproximat: e.target.checked })}
+                          />{' '}
+                          aprox.
+                        </label>
+                        <label>
+                          Propera data:{' '}
+                          <input
+                            type="date"
+                            value={formRecurrent.dataPrevista}
+                            onChange={(e) => setFormRecurrent({ ...formRecurrent, dataPrevista: e.target.value })}
+                          />
+                        </label>
+                        <label title="Última ocurrència esperada, opcional">
+                          Data de finalització:{' '}
+                          <input type="date" value={formRecurrent.dataFi} onChange={(e) => setFormRecurrent({ ...formRecurrent, dataFi: e.target.value })} />
+                        </label>
+                        <label>
+                          Categoria:{' '}
+                          <select
+                            value={formRecurrent.categoriaId}
+                            onChange={(e) => setFormRecurrent({ ...formRecurrent, categoriaId: e.target.value })}
+                          >
+                            <option value="">--</option>
+                            {categories.map((c) => (
+                              <option key={c.id} value={c.id}>
+                                {c.nom}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <label>
+                          Referència:{' '}
+                          <input
+                            value={formRecurrent.referencia}
+                            onChange={(e) => setFormRecurrent({ ...formRecurrent, referencia: e.target.value })}
+                            style={{ width: 100 }}
+                          />
+                        </label>
+                        <button onClick={handleDesaRecurrent}>Desa el recurrent</button>
+                        <button onClick={tancaFormRecurrent}>Cancel·la</button>
+                      </div>
+                      {errorRecurrent && <p style={{ color: '#c00' }}>{errorRecurrent}</p>}
+                    </td>
+                  </tr>
+                )}
                 {reglaObertaPer === m.id && formRegla && (
                   <tr>
                     <td colSpan={(targetes.length > 0 ? 6 : 5) + seleccionats.length * 2} style={{ ...cellStyle, background: '#f7f7f7' }}>
@@ -652,7 +807,7 @@ const cellCategoria: React.CSSProperties = amplaFixa(162);
 const cellTI: React.CSSProperties = { ...amplaFixa(28), textAlign: 'center', padding: '2px 4px' };
 // Encabeix el selector de targeta (90px) + el botó "M"/"D" d'una lletra.
 const cellLiquidacio: React.CSSProperties = amplaFixa(130);
-// La més estreta possible: només cal encabir-hi el botó "X" d'eliminar.
-const cellElimina: React.CSSProperties = { ...amplaFixa(28), textAlign: 'center', padding: '2px 4px' };
+// Encabeix els botons "R" (crea un recurrent) i "X" (eliminar) d'una lletra.
+const cellElimina: React.CSSProperties = { ...amplaFixa(52), textAlign: 'center', padding: '2px 4px' };
 // P.ex. "-12.345,67" és un import/saldo raonablement gran per a un ús personal.
 const cellNumeric: React.CSSProperties = { ...amplaFixa(80), textAlign: 'right', fontVariantNumeric: 'tabular-nums' };

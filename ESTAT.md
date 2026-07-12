@@ -132,6 +132,15 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-12 — Crear un recurrent directament des de la pàgina de Moviments
+
+L'usuari va demanar poder crear un recurrent sense haver de canviar de pestanya quan veu un càrrec/ingrés recurrent a la llista de Moviments.
+
+- `views/MovimentsList.tsx`: nou botó "R" a la columna d'accions (al costat de "X" d'eliminar; `cellElimina` passa de 28 a 52px per encabir-los tots dos), que obre una fila de formulari inline sota el moviment — mateix patró ja existent per a "afegeix una regla de categorització" (`obreFormRegla`/`tancaFormRegla`). El formulari es preomple amb les dades del moviment (compte, concepte, import, data, categoria) i permet corregir periodicitat (per defecte "mensual"), import/aproximat, data prevista, data de finalització opcional, categoria i referència abans de desar amb `creaRecurrentManual` (ja existent des de la 3.1, reaprofitat tal qual).
+- No calen canvis de backend — és només un altre punt d'entrada cap a la mateixa operació que ja fa servir el formulari manual de la pestanya "Recurrents".
+
+`tsc -b`/`oxlint`/`vite build` nets. Sense verificació clic a clic en un navegador real (no hi ha eina de navegador disponible en aquesta sessió).
+
 ### 2026-07-12 — Recurrents: indicador d'import aproximat, data de finalització opcional, i presentació a tota l'amplada
 
 Feedback de l'usuari gestionant recurrents: calia distingir un import cert (factura, ingrés fix) d'un d'estimat (patró detectat amb variació entre ocurrències), poder marcar una data de finalització opcional, i la pàgina hauria d'aprofitar l'amplada del monitor amb la mateixa mida de font que Moviments (que anava amb `fontSize: '0.9em'` en lloc dels `12` que fa servir `MovimentsList.tsx`, i limitada als mateixos 1000px que la resta de pestanyes).
