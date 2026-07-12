@@ -123,15 +123,26 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 
 ### Pendent / coses obertes
 
-- **[OBERT] de l'especificació, sense confirmar encara**: despesa difusa a la previsió (fase 4), llindar d'alerta de saldo mínim.
-- **Fase 3 (recurrents) COMPLETA**, per sub-fases (pla a `especificacio.md` §4.1, §4.2, §6 punt 3): **3.1 model de dades unificat**, **3.2 importació de compromisos confirmats**, **3.3 motor de detecció de periodicitat**, **3.4 pantalla de revisió/confirmació unificada**, **3.5 cas de targetes** (revisada: la primera versió aplicava detecció per patrons també a targetes, massa complexa i poc fiable — substituïda per una estimació agregada per mitjana de cicles de liquidació), **3.6 conciliació — dissenyada** (vegeu historial: mecanisme totalment automàtic i calculat al vol, sense taula ni camp nou; **implementació efectiva ajornada a la Fase 4**, que encara no ha començat).
+- **Fase 3 (recurrents) COMPLETA**, per sub-fases (pla a `especificacio.md` §4.1, §4.2, §6 punt 3): **3.1 model de dades unificat**, **3.2 importació de compromisos confirmats**, **3.3 motor de detecció de periodicitat**, **3.4 pantalla de revisió/confirmació unificada**, **3.5 cas de targetes** (revisada: la primera versió aplicava detecció per patrons també a targetes, massa complexa i poc fiable — substituïda per una estimació agregada per mitjana de cicles de liquidació), **3.6 conciliació — dissenyada** (mecanisme totalment automàtic i calculat al vol, sense taula ni camp nou; implementació efectiva a la Fase 4).
+- **Fase 4 (previsió) iniciada**, per sub-fases (pla a `especificacio.md` §4.3, §6 punt 4), acordat amb l'usuari: **4.1 motor de projecció** (backend), **4.2 sortides de consulta** (nova pestanya "Previsió": gràfic + taula), **4.3 alertes de llindar** (llindar global i per compte, tots dos opcionals). Decisions preses en començar: **despesa difusa ajornada** (no a la v1 d'aquesta fase — ja no és un [OBERT] pendent), llindar d'alerta **global i per compte** (no només un dels dos). Cap sub-fase implementada encara.
 - **Nova pestanya "Recurrents"** (abans la importació/llistat de compromisos vivia sota "Importar"): decisió presa sense preguntar explícitament, per no amuntegar tot sota "Importar" un cop hi ha també candidats detectats i formulari manual — reconsiderar si l'usuari ho prefereix d'una altra manera.
 - **La importació de compromisos (3.2) no té "lot"/desfer com la importació bancària**: cada fila importada és un `recurrent` independent, eliminable un a un (`eliminaRecurrent`, ja de la 3.1) — decisió d'abast per no duplicar la maquinària de `lots`/`undoLot` per a un cas d'ús que sol ser de pocs registres. Revisar si el volum real ho justifica.
 - **Verificació de la UI de recurrents (3.2/3.4) només via API/build, no clic a clic**: no hi ha eina de navegador disponible en aquesta sessió; `tsc -b`, `oxlint` i `vite build` nets, i els fluxos sencers (previsualitzar+confirmar+dedup d'un import, detectar+confirmar-amb-correcció+ignorar un candidat, editar i eliminar un recurrent) verificats per HTTP contra un servidor i dades temporals. Falta la confirmació visual de l'usuari a un navegador real.
 - **Un recurrent ja confirmat amb `dataPrevista` passada no s'actualitza automàticament** (a diferència d'un candidat detectat, que ara sempre es recalcula cap al futur cada vegada que es demana): l'usuari l'ha de corregir a mà des de l'edició in-line, o serà cosa del motor de previsió (Fase 4) recalcular-ho a partir de la periodicitat.
-- **Fase 4 (previsió)**: no iniciada.
-- **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
+- **Fase 5 (opcional)**: simulacions manuals, despesa difusa, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
+
+### 2026-07-12 — Inici de la Fase 4 (previsió): pla de sub-fases i decisions de disseny
+
+L'usuari ha demanat iniciar la Fase 4. Abans d'implementar es van confirmar tres decisions:
+
+- **Despesa difusa**: ajornada — no es fa a la v1 d'aquesta fase, deixant de ser un punt [OBERT] de l'especificació. La projecció es basa només en els recurrents confirmats.
+- **Llindar d'alerta**: **global** (sobre el saldo total de la selecció activa) **i per compte** (cadascun amb el seu propi valor opcional) — no només un dels dos.
+- **Ubicació a la interfície**: nova pestanya **"Previsió"**, coherent amb com ja es va fer "Recurrents".
+
+`especificacio.md` actualitzat: §4.3 substitueix el punt [OBERT] de despesa difusa per la decisió d'ajornar-la, i aclareix que l'alerta de llindar és global i per compte; §6 punt 4 desglossa la Fase 4 en sub-fases: **4.1 motor de projecció** (backend), **4.2 sortides de consulta** (gràfic + taula a la pestanya "Previsió"), **4.3 alertes de llindar**.
+
+Sense canvis de codi encara — aquesta entrada només documenta l'acord de planificació.
 
 ### 2026-07-12 — Sub-fase 3.6: disseny de la conciliació (frontera amb Fase 4) — Fase 3 completa
 

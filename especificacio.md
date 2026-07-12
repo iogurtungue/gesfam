@@ -120,8 +120,8 @@ A banda dels recurrents detectats automàticament sobre l'històric (4.1), algun
 
 - Punt de partida: saldo consolidat actual (i per compte).
 - Projecció dia a dia fins a l'horitzó triat (30 / 60 / 90 dies, i camp lliure): a cada data prevista d'un recurrent confirmat, aplicar-ne l'import estimat.
-- **[OBERT]** Despesa no recurrent: oferir com a opció activable afegir una estimació de despesa difusa diària (mitjana de la despesa no recurrent dels últims N mesos), mostrada com a banda d'incertesa al gràfic, no com a línia única. Confirmar amb l'usuari si ho vol a la v1 o a una fase posterior.
-- **Sortides**: gràfic de saldo projectat (línia de saldo cert-a-avui + projecció, amb banda optimista/pessimista si s'activa la despesa difusa), taula cronològica dels moviments previstos, i **alertes**: dates en què el saldo projectat (total o d'un compte) baixa d'un llindar configurable o es fa negatiu.
+- **Despesa no recurrent (banda d'incertesa)**: **ajornada** — no es fa a la v1 d'aquesta fase; la projecció es basa només en els recurrents confirmats. Es podrà afegir més endavant sense canviar el disseny base del motor.
+- **Sortides**: gràfic de saldo projectat (línia de saldo cert-a-avui + projecció), taula cronològica dels moviments previstos, i **alertes**: dates en què el saldo projectat baixa d'un llindar configurable o es fa negatiu — **llindar global** (sobre el saldo total de la selecció activa) **i llindar per compte** (cadascun amb el seu propi valor opcional).
 - **Simulació manual** (desitjable, fase 2): afegir moviments hipotètics puntuals («i si pago 3.000 € el dia 15?») i veure l'efecte sobre la corba.
 
 ## 5. Fora d'abast (v1)
@@ -139,7 +139,10 @@ Multiusuari i autenticació; connexió automàtica amb bancs; app mòbil nativa;
    - **3.4 — Pantalla de revisió/confirmació unificada**: candidats detectats (3.3) + compromisos manuals/importats (3.2), amb accions de confirmar/corregir/ignorar/eliminar.
    - **3.5 — Exclusions i cas de targetes**: transferències internes i contrapartides de liquidació excloses de la detecció. Per a targetes, la detecció per patrons no és fiable (massa comerços diferents i irregulars); en lloc d'això, cada targeta amb `diaLiquidacio` configurat rep una única estimació agregada (mitjana dels últims cicles de facturació), sense desglossar per comerç ni categoria.
    - **3.6 — (frontera amb Fase 4) Conciliació**: dissenyat (4.2) — mecanisme totalment automàtic i calculat al vol (sense taula ni camp nou) perquè un recurrent confirmat i el moviment bancari real que finalment el liquida no comptin dues vegades a la previsió; implementació efectiva ajornada a la Fase 4.
-4. **Fase 4 — Previsió**: motor de projecció, gràfic, taula, alertes de llindar. *Criteri*: la previsió a 30 dies quadra amb el que l'usuari espera manualment (±revisió conjunta).
+4. **Fase 4 — Previsió**: motor de projecció, gràfic, taula, alertes de llindar. *Criteri*: la previsió a 30 dies quadra amb el que l'usuari espera manualment (±revisió conjunta). Sense despesa difusa (ajornada, veure 4.3). Desenvolupada per sub-fases:
+   - **4.1 — Motor de projecció (backend)**: saldo actual (total i per compte) + recurrents confirmats -> saldo projectat dia a dia fins a l'horitzó triat, aplicant cada recurrent periòdic tantes vegades com calgui i la conciliació (3.6).
+   - **4.2 — Sortides de consulta (frontend)**: nova pestanya "Previsió" amb selector d'horitzó (30/60/90 dies + camp lliure), gràfic de saldo projectat i taula cronològica dels moviments previstos.
+   - **4.3 — Alertes de llindar**: llindar global (saldo total de la selecció activa) i llindar per compte, cadascun opcional; avís a les dates en què el saldo projectat el supera per sota o es fa negatiu.
 5. **Fase 5 (opcional)**: parser Norma 43, simulacions, despesa difusa, exportacions addicionals.
 
 Desenvolupar **fase per fase**, validant amb l'usuari abans de passar a la següent. Escriure tests unitaris com a mínim per als parsers, la deduplicació i la detecció de periodicitat (són el cor del sistema i els punts més fràgils).
