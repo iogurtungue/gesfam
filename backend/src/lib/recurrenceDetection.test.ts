@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectaRecurrents, properaDataLiquidacio, type MovimentCandidat } from './recurrenceDetection';
+import { detectaRecurrents, estimaLiquidacioTargeta, type MovimentCandidat, type MovimentTargetaCandidat } from './recurrenceDetection';
 
 // Anterior a totes les dates de moviments usades en aquest fitxer, perquè cap
 // test es vegi afectat per la projecció cap al futur (properaOcurrencia):
@@ -247,28 +247,89 @@ describe('detectaRecurrents', () => {
   });
 });
 
-describe('properaDataLiquidacio (sub-fase 3.5, especificacio.md 3.2.1)', () => {
-  it('returns the settlement day of the same month when it has not passed yet', () => {
-    expect(properaDataLiquidacio('2026-07-05', 20)).toBe('2026-07-20');
+describe('estimaLiquidacioTargeta (sub-fase 3.5 revisada, especificacio.md 3.2.1)', () => {
+  function mt(dataOperacio: string, importCents: number, id = dataOperacio): MovimentTargetaCandidat {
+    return { id, dataOperacio, importCents };
+  }
+
+  it('averages up to 3 complete cycles, using the median as the estimate', () => {
+    const moviments = [mt('2026-04-10', -12000, 'a'), mt('2026-05-15', -8000, 'b'), mt('2026-06-20', -10000, 'c')];
+
+    const estimacio = estimaLiquidacioTargeta(moviments, 5, '2026-07-12');
+
+    expect(estimacio).toMatchObject({
+      importEstimatCents: -10000,
+      importMinCents: -12000,
+      importMaxCents: -8000,
+      periodesUsats: 3,
+      confianca: 100,
+      dataPrevista: '2026-08-05',
+    });
   });
 
-  it('counts the charge day itself as an already-valid settlement day', () => {
-    expect(properaDataLiquidacio('2026-07-05', 5)).toBe('2026-07-05');
+  it('returns an estimate with just the minimum of 2 periods of data', () => {
+    const moviments = [mt('2026-05-15', -8000, 'a'), mt('2026-06-20', -10000, 'b')];
+
+    const estimacio = estimaLiquidacioTargeta(moviments, 5, '2026-07-12');
+
+    expect(estimacio).toMatchObject({ importEstimatCents: -9000, periodesUsats: 2, confianca: 67 });
   });
 
-  it('rolls over to next month when the settlement day already passed this month', () => {
-    expect(properaDataLiquidacio('2026-07-05', 3)).toBe('2026-08-03');
+  it('returns null when fewer than 2 complete cycles have any data', () => {
+    const moviments = [mt('2026-06-20', -10000)];
+
+    expect(estimaLiquidacioTargeta(moviments, 5, '2026-07-12')).toBeNull();
   });
 
-  it('rolls over the year boundary', () => {
-    expect(properaDataLiquidacio('2026-12-20', 5)).toBe('2027-01-05');
+  it('returns null with no movements at all', () => {
+    expect(estimaLiquidacioTargeta([], 5, '2026-07-12')).toBeNull();
   });
 
-  it('clamps the settlement day to the last day of a shorter month', () => {
-    expect(properaDataLiquidacio('2026-02-01', 31)).toBe('2026-02-28');
+  it('assigns a boundary-dated movement to the correct cycle (inclusive on both ends)', () => {
+    const moviments = [
+      mt('2026-06-05', -1000, 'finalPeriode1'), // últim dia del cicle anterior
+      mt('2026-06-06', -2000, 'primerPeriode0'), // primer dia del cicle actual
+      mt('2026-04-20', -3000, 'periode2'),
+    ];
+
+    const estimacio = estimaLiquidacioTargeta(moviments, 5, '2026-07-12')!;
+
+    expect(estimacio.periodesUsats).toBe(3);
+    expect([...estimacio.movimentIds].sort()).toEqual(['finalPeriode1', 'periode2', 'primerPeriode0'].sort());
+    // Totals per cicle: -2000 (actual), -1000 (anterior), -3000 (fa dos cicles) -> mediana = -2000.
+    expect(estimacio.importEstimatCents).toBe(-2000);
   });
 
-  it('clamps the settlement day when rolling over into a shorter next month', () => {
-    expect(properaDataLiquidacio('2026-01-31', 30)).toBe('2026-02-28');
+  it('sums signed amounts within a cycle (a refund reduces the total)', () => {
+    const moviments = [mt('2026-06-10', -10000, 'a'), mt('2026-06-15', 3000, 'devolucio'), mt('2026-05-10', -8000, 'c')];
+
+    const estimacio = estimaLiquidacioTargeta(moviments, 5, '2026-07-12')!;
+
+    // Cicle actual: -10000+3000=-7000; cicle anterior: -8000. Mediana (2 valors) = -7500.
+    expect(estimacio.periodesUsats).toBe(2);
+    expect(estimacio.importEstimatCents).toBe(-7500);
+  });
+
+  it('clamps the settlement day to the last day of shorter months when building cycle boundaries', () => {
+    const moviments = [mt('2026-02-15', -5000, 'a'), mt('2026-01-15', -4000, 'b')];
+
+    const estimacio = estimaLiquidacioTargeta(moviments, 31, '2026-03-15')!;
+
+    expect(estimacio.periodesUsats).toBe(2);
+    expect(estimacio.dataPrevista).toBe('2026-03-31');
+  });
+
+  it('without specifying avui, uses the real date and always returns a future dataPrevista', () => {
+    const ara = new Date();
+    const iso = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    const moviments = [
+      mt(iso(new Date(ara.getFullYear(), ara.getMonth() - 2, 10)), -5000, 'a'),
+      mt(iso(new Date(ara.getFullYear(), ara.getMonth() - 1, 10)), -6000, 'b'),
+    ];
+
+    const estimacio = estimaLiquidacioTargeta(moviments, 15);
+
+    expect(estimacio).not.toBeNull();
+    expect(estimacio!.dataPrevista >= iso(ara)).toBe(true);
   });
 });

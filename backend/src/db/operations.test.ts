@@ -770,13 +770,12 @@ describe('detectaCandidatsRecurrents (sub-fase 3.3, especificacio.md 4.1)', () =
     expect(candidat).toMatchObject({ compteId: corrent.id, periodicitat: 'mensual', importEstimatCents: -1200 });
   });
 
-  it('detects a candidate from targeta-account movements too (sub-fase 3.5)', () => {
+  it('does not run merchant-pattern detection on targeta movements (sub-fase 3.5 revisada: targetes fan servir una estimació agregada, no patrons per comerç)', () => {
     const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
     importaMensual(targeta, 'NETFLIX', -1200);
 
-    const [candidat] = detectaCandidatsRecurrents();
-
-    expect(candidat).toMatchObject({ compteId: targeta.id, periodicitat: 'mensual', importEstimatCents: -1200 });
+    // Sense diaLiquidacio configurat, tampoc es genera cap candidat d'estimació agregada.
+    expect(detectaCandidatsRecurrents()).toEqual([]);
   });
 
   it('excludes movements marked as internal transfer', () => {
@@ -855,69 +854,71 @@ describe('detectaCandidatsRecurrents (sub-fase 3.3, especificacio.md 4.1)', () =
   });
 });
 
-describe('detectaCandidatsRecurrents: targeta amb liquidació configurada (sub-fase 3.5, especificacio.md 3.2.1)', () => {
-  // Ocurrències construïdes relatives a "ara" (no a dates fixes de 2026): la
-  // darrera cau sempre més d'un any en el futur, així que la "propera
-  // ocurrència" (última + 1 mes, dia 5) mai necessita cap projecció addicional
-  // cap endavant (recurrenceDetection.ts `properaOcurrencia`) i el test és
-  // determinista independentment de quin dia real s'executi la suite.
-  function iso(d: Date): string {
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  }
+describe('detectaCandidatsRecurrents: estimació agregada de targeta (sub-fase 3.5 revisada, especificacio.md 3.2.1)', () => {
+  const AVUI = '2026-07-12';
 
-  function importaMensual(compte: Parameters<typeof commitImport>[0], concepte: string, importCents: number, fitxer = 'test.txt') {
-    const ara = new Date();
-    const dates = [13, 14, 15].map((mesosEndavant) => iso(new Date(ara.getFullYear(), ara.getMonth() + mesosEndavant, 5)));
+  // Tres moviments repartits en 2 cicles complets de liquidació (dia 5, avui
+  // 2026-07-12): cicle actual (06-06 a 07-05) conté 07-01 i la devolució de
+  // 06-10; cicle anterior (05-06 a 06-05) conté només 06-01. Mediana de 2
+  // valors = suma total / 2 = (-8000-6000+1000)/2 = -6500, sigui quina sigui
+  // l'assignació exacta de cada moviment al seu cicle.
+  function importaDespesesTargeta(targeta: Parameters<typeof commitImport>[0]) {
     commitImport(
-      compte,
-      dates.map((data) => mov(data, concepte, importCents)),
-      fitxer,
+      targeta,
+      [mov('2026-07-01', 'SUPERMERCAT', -8000), mov('2026-06-01', 'SUPERMERCAT', -6000), mov('2026-06-10', 'DEVOLUCIO', 1000)],
+      'test.txt',
     );
-    const ultimaOcurrencia = new Date(dates[2]);
-    const properaOcurrenciaCrua = new Date(ultimaOcurrencia.getFullYear(), ultimaOcurrencia.getMonth() + 1, 5);
-    return { properaOcurrenciaCrua };
   }
 
-  it("uses the targeta's next settlement date instead of the raw next charge date when compteLiquidacioId/diaLiquidacio are configured", () => {
-    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+  it('creates a single aggregate candidate when diaLiquidacio is configured and there is enough spending history', () => {
     const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
-    actualitzaCompte(targeta.id, { compteLiquidacioId: corrent.id, diaLiquidacio: 20 });
-    const { properaOcurrenciaCrua } = importaMensual(targeta, 'NETFLIX', -1200);
+    actualitzaCompte(targeta.id, { diaLiquidacio: 5 });
+    importaDespesesTargeta(targeta);
 
-    const [candidat] = detectaCandidatsRecurrents();
+    const [candidat] = detectaCandidatsRecurrents(AVUI);
 
-    // El dia de liquidació (20) del mateix mes de la propera ocurrència crua (dia 5) encara no ha passat, així que hi cau.
-    expect(candidat.compteId).toBe(targeta.id);
-    expect(candidat.dataPrevista).toBe(iso(new Date(properaOcurrenciaCrua.getFullYear(), properaOcurrenciaCrua.getMonth(), 20)));
+    expect(candidat).toMatchObject({
+      compteId: targeta.id,
+      concepte: 'Liquidació estimada de targeta',
+      periodicitat: 'mensual',
+      importEstimatCents: -6500,
+      ocurrencies: 2,
+      dataPrevista: '2026-08-05',
+    });
   });
 
-  it('keeps the raw next-charge date for a targeta without a settlement account/day configured', () => {
+  it('does not create a candidate without diaLiquidacio configured, even with the same spending history', () => {
     const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
-    const { properaOcurrenciaCrua } = importaMensual(targeta, 'NETFLIX', -1200);
+    importaDespesesTargeta(targeta);
 
-    const [candidat] = detectaCandidatsRecurrents();
-
-    expect(candidat.dataPrevista).toBe(iso(properaOcurrenciaCrua));
+    expect(detectaCandidatsRecurrents(AVUI)).toEqual([]);
   });
 
-  it('keeps the raw next-charge date for a targeta with compteLiquidacioId but no diaLiquidacio', () => {
-    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+  it('does not re-surface the aggregate candidate once confirmed', () => {
     const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
-    actualitzaCompte(targeta.id, { compteLiquidacioId: corrent.id });
-    const { properaOcurrenciaCrua } = importaMensual(targeta, 'NETFLIX', -1200);
+    actualitzaCompte(targeta.id, { diaLiquidacio: 5 });
+    importaDespesesTargeta(targeta);
+    const [candidat] = detectaCandidatsRecurrents(AVUI);
+    expect(candidat).toBeDefined();
 
-    const [candidat] = detectaCandidatsRecurrents();
+    creaRecurrentManual({
+      compteId: candidat.compteId,
+      concepte: candidat.concepte,
+      periodicitat: candidat.periodicitat,
+      importCents: candidat.importEstimatCents,
+      dataPrevista: candidat.dataPrevista,
+    });
 
-    expect(candidat.dataPrevista).toBe(iso(properaOcurrenciaCrua));
+    expect(detectaCandidatsRecurrents(AVUI)).toEqual([]);
   });
 
-  it('does not affect a corrent-account candidate (settlement logic only applies to targeta)', () => {
+  it('does not affect corrent-account pattern detection', () => {
     const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
-    const { properaOcurrenciaCrua } = importaMensual(corrent, 'NOMINA', 180000);
+    commitImport(corrent, ['2026-05-05', '2026-06-05', '2026-07-05'].map((data) => mov(data, 'NOMINA', 180000)), 'test.txt');
 
-    const [candidat] = detectaCandidatsRecurrents();
+    const [candidat] = detectaCandidatsRecurrents(AVUI);
 
-    expect(candidat.dataPrevista).toBe(iso(properaOcurrenciaCrua));
+    expect(candidat).toMatchObject({ compteId: corrent.id, periodicitat: 'mensual', importEstimatCents: 180000 });
   });
 });
 

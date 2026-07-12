@@ -21,7 +21,14 @@ import { normalizeConceptForDedup, normalizeConceptForRecurrence } from '../lib/
 import { computeContrapartidaId } from '../lib/hash.ts';
 import { suggereixTransferenciesInternes, type SuggerimentTransferencia } from '../lib/internalTransfers.ts';
 import { pickTargetaLiquidacio } from '../lib/liquidacioTargeta.ts';
-import { detectaRecurrents, properaDataLiquidacio, type CandidatRecurrent, type MovimentCandidat } from '../lib/recurrenceDetection.ts';
+import {
+  detectaRecurrents,
+  estimaLiquidacioTargeta,
+  isoAvui,
+  type CandidatRecurrent,
+  type MovimentCandidat,
+  type MovimentTargetaCandidat,
+} from '../lib/recurrenceDetection.ts';
 import type { ParsedRecurrentImport } from '../parsers/recurrentsFile.ts';
 import type { AccountType, BankId, ParsedMoviment } from '../parsers/types.ts';
 
@@ -986,54 +993,85 @@ export function importaRecurrents(compteId: string, parsed: ParsedRecurrentImpor
   return { nous: nous.length, duplicats };
 }
 
+/** Concepte fix per a l'estimació agregada d'una targeta (sub-fase 3.5 revisada) — no depèn de l'àlies del compte perquè la clau de "ja decidit" no es desvinculi si l'usuari el renomena. */
+const CONCEPTE_ESTIMACIO_TARGETA = 'Liquidació estimada de targeta';
+
 /**
- * Motor de detecció de periodicitat (sub-fases 3.3/3.5, especificacio.md
- * 4.1, 3.2.1): calcula candidats sobre l'històric real, sense persistir res
- * (es recalculen a cada crida, com decidit a la 3.1). Analitza moviments de
- * qualsevol compte (corrent i targeta), exclosos els marcats com a
- * transferència interna i les contrapartides virtuals de liquidació (spec
- * 3.2.1) — cap dels dos representa consum real. Un candidat no es torna a
- * mostrar si ja existeix un recurrent confirmat o ignorat pel mateix
- * (compte, concepte normalitzat per a recurrència, signe): la comparació es
- * fa recalculant `normalizeConceptForRecurrence` sobre el `concepte` cru de
- * cada recurrent ja existent, no sobre el seu `concepteNormalitzat`
- * emmagatzemat — aquest es va guardar amb la normalització de
- * deduplicació (3.1/3.2), més estricta, que no coincideix necessàriament
- * amb la normalització difusa usada aquí per agrupar.
+ * Motor de detecció de periodicitat (sub-fase 3.3, especificacio.md 4.1):
+ * calcula candidats sobre l'històric real de moviments de **compte corrent**,
+ * sense persistir res (es recalculen a cada crida, com decidit a la 3.1),
+ * exclosos els marcats com a transferència interna i les contrapartides
+ * virtuals de liquidació (spec 3.2.1) — cap dels dos representa consum real.
+ * Un candidat no es torna a mostrar si ja existeix un recurrent confirmat o
+ * ignorat pel mateix (compte, concepte normalitzat per a recurrència, signe):
+ * la comparació es fa recalculant `normalizeConceptForRecurrence` sobre el
+ * `concepte` cru de cada recurrent ja existent, no sobre el seu
+ * `concepteNormalitzat` emmagatzemat — aquest es va guardar amb la
+ * normalització de deduplicació (3.1/3.2), més estricta, que no coincideix
+ * necessàriament amb la normalització difusa usada aquí per agrupar.
  *
- * Per a un candidat d'una targeta amb liquidació configurada
- * (`compteLiquidacioId`+`diaLiquidacio`), la `dataPrevista` no és la propera
- * data de càrrec a la targeta (que no reflecteix quan afecta la tresoreria)
- * sinó la propera data de liquidació al compte corrent (`properaDataLiquidacio`)
- * — el `compteId` es manté el de la targeta, on realment passa el càrrec.
- * Una targeta sense liquidació configurada manté el comportament antic (data
- * del proper càrrec a la pròpia targeta), ja que no hi ha prou informació
- * per calcular-ne la liquidació real.
+ * Les targetes **no** passen per aquest motor (sub-fase 3.5 revisada): amb
+ * tants comerços diferents i imports irregulars, la detecció per patrons hi
+ * és poc fiable. En lloc d'això, cada targeta amb `diaLiquidacio` configurat
+ * rep un únic candidat agregat amb l'estimació del total de la propera
+ * liquidació (`estimaLiquidacioTargeta`, mitjana dels últims cicles de
+ * facturació) — sense desglossar per comerç ni categoria. Una targeta sense
+ * `diaLiquidacio` configurat no genera cap candidat: no hi ha manera fiable
+ * de delimitar els cicles ni de saber quan es liquidarà.
+ *
+ * `avui` (ISO, per defecte la data real) es passa a totes les funcions de
+ * càlcul de dates internes perquè siguin testejables de manera determinista.
  */
-export function detectaCandidatsRecurrents(): CandidatRecurrent[] {
+export function detectaCandidatsRecurrents(avui: string = isoAvui()): CandidatRecurrent[] {
   const comptes = listComptes();
   if (comptes.length === 0) return [];
-  const compteById = new Map(comptes.map((c) => [c.id, c]));
 
-  const moviments: MovimentCandidat[] = listAllMoviments()
-    .filter((m) => !m.esTransferenciaInterna && !m.movimentOrigenId)
-    .map((m) => ({ id: m.id, compteId: m.compteId, dataOperacio: m.dataOperacio, concepteOriginal: m.concepteOriginal, importCents: m.importCents }));
+  const totsMoviments = listAllMoviments().filter((m) => !m.esTransferenciaInterna && !m.movimentOrigenId);
+  const compteById = new Map(comptes.map((c) => [c.id, c]));
 
   const clausJaDecidides = new Set(
     listRecurrents().map((r) => `${r.compteId}|${normalizeConceptForRecurrence(r.concepte)}|${Math.sign(r.importCents)}`),
   );
 
-  const candidats = detectaRecurrents(moviments).filter(
+  const movimentsCorrent: MovimentCandidat[] = totsMoviments
+    .filter((m) => compteById.get(m.compteId)?.tipus === 'corrent')
+    .map((m) => ({ id: m.id, compteId: m.compteId, dataOperacio: m.dataOperacio, concepteOriginal: m.concepteOriginal, importCents: m.importCents }));
+
+  const candidatsPatro = detectaRecurrents(movimentsCorrent, avui).filter(
     (c) => !clausJaDecidides.has(`${c.compteId}|${c.concepteNormalitzat}|${Math.sign(c.importEstimatCents)}`),
   );
 
-  return candidats.map((c) => {
-    const compte = compteById.get(c.compteId);
-    if (compte?.tipus === 'targeta' && compte.compteLiquidacioId && compte.diaLiquidacio) {
-      return { ...c, dataPrevista: properaDataLiquidacio(c.dataPrevista, compte.diaLiquidacio) };
-    }
-    return c;
-  });
+  const concepteNormalitzatTargeta = normalizeConceptForRecurrence(CONCEPTE_ESTIMACIO_TARGETA);
+  const candidatsTargeta: CandidatRecurrent[] = [];
+  for (const compte of comptes) {
+    if (compte.tipus !== 'targeta' || !compte.diaLiquidacio) continue;
+
+    const movimentsTargeta: MovimentTargetaCandidat[] = totsMoviments
+      .filter((m) => m.compteId === compte.id)
+      .map((m) => ({ id: m.id, dataOperacio: m.dataOperacio, importCents: m.importCents }));
+
+    const estimacio = estimaLiquidacioTargeta(movimentsTargeta, compte.diaLiquidacio, avui);
+    if (!estimacio) continue;
+
+    const clau = `${compte.id}|${concepteNormalitzatTargeta}|${Math.sign(estimacio.importEstimatCents)}`;
+    if (clausJaDecidides.has(clau)) continue;
+
+    candidatsTargeta.push({
+      compteId: compte.id,
+      concepte: CONCEPTE_ESTIMACIO_TARGETA,
+      concepteNormalitzat: concepteNormalitzatTargeta,
+      periodicitat: 'mensual',
+      importEstimatCents: estimacio.importEstimatCents,
+      importMinCents: estimacio.importMinCents,
+      importMaxCents: estimacio.importMaxCents,
+      dataPrevista: estimacio.dataPrevista,
+      ocurrencies: estimacio.periodesUsats,
+      confianca: estimacio.confianca,
+      movimentIds: estimacio.movimentIds,
+    });
+  }
+
+  return [...candidatsPatro, ...candidatsTargeta].sort((a, b) => a.dataPrevista.localeCompare(b.dataPrevista));
 }
 
 // --- Còpia de seguretat (NFR secció 2) ---

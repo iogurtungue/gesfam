@@ -75,7 +75,8 @@ function afegeixMesos(iso: string, mesos: number): string {
   return `${anyObjectiu}-${String(mesObjectiu + 1).padStart(2, '0')}-${String(diaClampat).padStart(2, '0')}`;
 }
 
-function isoAvui(): string {
+/** Data real d'avui en ISO (getters locals, no `toISOString()` — mateix criteri que `avui()` a `frontend/src/lib/dates.ts`). Exportada perquè el cridant (db/operations.ts) pugui fer-la servir com a valor per defecte consistent per a tots els càlculs de la mateixa crida. */
+export function isoAvui(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
@@ -97,21 +98,29 @@ function dataDelMes(any: number, mes1indexat: number, dia: number): string {
   return `${any}-${String(mes1indexat).padStart(2, '0')}-${String(diaClampat).padStart(2, '0')}`;
 }
 
-/**
- * Propera data de liquidació d'una targeta al compte corrent (especificacio.md
- * 3.2.1, sub-fase 3.5): el primer `diaLiquidacio` de mes que sigui igual o
- * posterior a `dataCarrec` — si el dia de liquidació d'aquest mes ja ha
- * passat respecte al càrrec, es passa al mes següent. És la data que
- * realment afecta la tresoreria, no la data del càrrec a la targeta mateixa.
- */
-export function properaDataLiquidacio(dataCarrec: string, diaLiquidacio: number): string {
-  const [y, m] = dataCarrec.split('-').map(Number);
-  const aquestMes = dataDelMes(y, m, diaLiquidacio);
-  if (aquestMes >= dataCarrec) return aquestMes;
+/** El cicle de liquidació (dia `diaLiquidacio` de mes) immediatament anterior a `dataLiquidacio`. */
+function cicleAnterior(dataLiquidacio: string, diaLiquidacio: number): string {
+  const [y, m] = dataLiquidacio.split('-').map(Number);
+  const totalMesos = y * 12 + (m - 1) - 1;
+  const anyObjectiu = Math.floor(totalMesos / 12);
+  const mesObjectiu = (totalMesos % 12) + 1;
+  return dataDelMes(anyObjectiu, mesObjectiu, diaLiquidacio);
+}
+
+/** El cicle de liquidació (dia `diaLiquidacio` de mes) immediatament posterior a `dataLiquidacio`. */
+function cicleSeguent(dataLiquidacio: string, diaLiquidacio: number): string {
+  const [y, m] = dataLiquidacio.split('-').map(Number);
   const totalMesos = y * 12 + (m - 1) + 1;
-  const anySeguent = Math.floor(totalMesos / 12);
-  const mesSeguent = (totalMesos % 12) + 1;
-  return dataDelMes(anySeguent, mesSeguent, diaLiquidacio);
+  const anyObjectiu = Math.floor(totalMesos / 12);
+  const mesObjectiu = (totalMesos % 12) + 1;
+  return dataDelMes(anyObjectiu, mesObjectiu, diaLiquidacio);
+}
+
+/** L'última data de liquidació (dia `diaLiquidacio`) que sigui igual o anterior a `referencia`. */
+function ultimaDataLiquidacio(referencia: string, diaLiquidacio: number): string {
+  const [y, m] = referencia.split('-').map(Number);
+  const aquestMes = dataDelMes(y, m, diaLiquidacio);
+  return aquestMes <= referencia ? aquestMes : cicleAnterior(aquestMes, diaLiquidacio);
 }
 
 function mediana(valors: number[]): number {
@@ -199,4 +208,74 @@ export function detectaRecurrents(moviments: MovimentCandidat[], avui: string = 
     if (candidat) candidats.push(candidat);
   }
   return candidats.sort((a, b) => a.dataPrevista.localeCompare(b.dataPrevista));
+}
+
+export interface MovimentTargetaCandidat {
+  id: string;
+  dataOperacio: string;
+  importCents: number;
+}
+
+export interface EstimacioLiquidacioTargeta {
+  /** Cèntims amb signe: mediana del total liquidat als períodes usats. */
+  importEstimatCents: number;
+  importMinCents: number;
+  importMaxCents: number;
+  /** Nombre de cicles de liquidació complets amb dades que s'han fet servir per calcular la mediana (com a mínim 2). */
+  periodesUsats: number;
+  /** 0-100, proporcional a `periodesUsats` sobre el màxim de cicles que es demanen (`PERIODES_PER_MITJANA`). */
+  confianca: number;
+  /** Propera data de liquidació (sempre futura respecte a `avui`, mai basada en moviments concrets). */
+  dataPrevista: string;
+  /** Ids de tots els moviments dels cicles usats, per a la futura pantalla de revisió. */
+  movimentIds: string[];
+}
+
+const PERIODES_PER_MITJANA = 3;
+const MINIM_PERIODES = 2;
+
+/**
+ * Estimació agregada del total de la propera liquidació d'una targeta
+ * (especificacio.md 3.2.1, sub-fase 3.5 revisada): en lloc de buscar patrons
+ * de repetició per comerç (massa nombrosos i irregulars per detectar-hi res
+ * fiable), calcula la mediana del total liquidat als últims cicles complets
+ * de facturació (com a màxim `PERIODES_PER_MITJANA`, calen com a mínim
+ * `MINIM_PERIODES` amb dades). Un cicle va del dia després del `diaLiquidacio`
+ * d'un mes fins al `diaLiquidacio` del mes següent. Retorna `null` si no hi
+ * ha prou cicles amb moviments per fer-ne una estimació mínimament fiable.
+ */
+export function estimaLiquidacioTargeta(
+  moviments: MovimentTargetaCandidat[],
+  diaLiquidacio: number,
+  avui: string = isoAvui(),
+): EstimacioLiquidacioTargeta | null {
+  const finalUltimCicleComplet = ultimaDataLiquidacio(avui, diaLiquidacio);
+
+  const fronteres = [finalUltimCicleComplet];
+  for (let i = 0; i < PERIODES_PER_MITJANA; i++) {
+    fronteres.push(cicleAnterior(fronteres[i], diaLiquidacio));
+  }
+
+  const totalsPerPeriode: number[] = [];
+  const movimentIds: string[] = [];
+  for (let i = 0; i < PERIODES_PER_MITJANA; i++) {
+    const inici = afegeixDies(fronteres[i + 1], 1);
+    const fi = fronteres[i];
+    const delPeriode = moviments.filter((m) => m.dataOperacio >= inici && m.dataOperacio <= fi);
+    if (delPeriode.length === 0) continue;
+    totalsPerPeriode.push(delPeriode.reduce((suma, m) => suma + m.importCents, 0));
+    movimentIds.push(...delPeriode.map((m) => m.id));
+  }
+
+  if (totalsPerPeriode.length < MINIM_PERIODES) return null;
+
+  return {
+    importEstimatCents: Math.round(mediana(totalsPerPeriode)),
+    importMinCents: Math.min(...totalsPerPeriode),
+    importMaxCents: Math.max(...totalsPerPeriode),
+    periodesUsats: totalsPerPeriode.length,
+    confianca: Math.round((100 * totalsPerPeriode.length) / PERIODES_PER_MITJANA),
+    dataPrevista: cicleSeguent(finalUltimCicleComplet, diaLiquidacio),
+    movimentIds,
+  };
 }
