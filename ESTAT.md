@@ -133,6 +133,20 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-12 — Recurrents: tercer ajust, Referència a 125px
+
+`lib/recurrentsTable.ts`: `cellReferencia` de 110px a 125px (les altres columnes sense canvis respecte a l'entrada anterior).
+
+### 2026-07-12 — Moviments: filtre per Transferències internes, i vista per defecte dels últims 60 dies
+
+Dues millores demanades a la pàgina de Moviments:
+
+- **Filtre "TI"**: nou desplegable (Totes / Només TI / Sense TI) que filtra pel booleà `esTransferenciaInterna` — abans la columna TI es podia marcar/desmarcar però no es podia filtrar.
+- **Vista per defecte dels últims 60 dies**: `dataDes` ja no comença buit (mostrant tot l'històric) sinó `avui() - 60 dies`; nou desplegable "Interval" amb els presets Últims 15/30/60/90 dies (60 per defecte) que, en triar-lo, recalcula `dataDes` a `avui() - N dies` i buida `dataFins` (sense límit superior). Els camps "Des de"/"Fins a" continuen disponibles per a un rang personalitzat, independent del desplegable.
+- `lib/dates.ts`: nova `faDiesAbans(iso, dies)` — mateix criteri que `avui()` (getters locals, no `toISOString()`, per evitar el bug de fus horari ja documentat). 3 tests nous (36 tests frontend en total).
+
+`tsc -b`/`oxlint`/`vite build` nets. Sense verificació clic a clic en un navegador real (no hi ha eina de navegador disponible en aquesta sessió).
+
 ### 2026-07-12 — Recurrents: segon ajust de mides de columna + requadre de Referència a amplada completa
 
 Segon ajust d'amplada sobre `lib/recurrentsTable.ts`, demanat directament en píxels: Data/Data fi a 125px, Categoria a 175px, Referència a 110px (Compte/Periodicitat/Import/Origen sense canvis).

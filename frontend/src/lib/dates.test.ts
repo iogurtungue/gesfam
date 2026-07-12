@@ -1,9 +1,23 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { avui, formatDateEs } from './dates';
+import { avui, faDiesAbans, formatDateEs } from './dates';
 
 describe('formatDateEs', () => {
   it('formats an ISO date in Spanish dd/mm/aaaa convention', () => {
     expect(formatDateEs('2026-07-06')).toBe('06/07/2026');
+  });
+});
+
+describe('faDiesAbans', () => {
+  it('subtracts the given number of days within the same month', () => {
+    expect(faDiesAbans('2026-07-12', 5)).toBe('2026-07-07');
+  });
+
+  it('crosses a month boundary', () => {
+    expect(faDiesAbans('2026-07-12', 60)).toBe('2026-05-13');
+  });
+
+  it('crosses a year boundary', () => {
+    expect(faDiesAbans('2026-01-15', 30)).toBe('2025-12-16');
   });
 });
 

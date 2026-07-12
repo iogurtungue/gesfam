@@ -19,5 +19,5 @@ export const cellConcepte: CSSProperties = { whiteSpace: 'normal', overflowWrap:
 export const cellImport: CSSProperties = { ...amplaFixa(160), textAlign: 'right' };
 export const cellCategoria: CSSProperties = amplaFixa(175);
 export const cellOrigen: CSSProperties = amplaFixa(110);
-export const cellReferencia: CSSProperties = amplaFixa(110);
+export const cellReferencia: CSSProperties = amplaFixa(125);
 export const cellAccions: CSSProperties = amplaFixa(170);

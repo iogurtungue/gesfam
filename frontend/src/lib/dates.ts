@@ -20,3 +20,11 @@ export function formatDateEs(iso: string): string {
   const [y, m, d] = iso.split('-');
   return `${d}/${m}/${y}`;
 }
+
+/** ISO yyyy-mm-dd `dies` days before a given ISO date — for "last N days" filter presets. Local getters throughout, same rationale as `avui()`. */
+export function faDiesAbans(iso: string, dies: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const data = new Date(y, m - 1, d);
+  data.setDate(data.getDate() - dies);
+  return `${data.getFullYear()}-${pad2(data.getMonth() + 1)}-${pad2(data.getDate())}`;
+}

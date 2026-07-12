@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { creaConsultaSaldo, creaRangCronologicPerMoviment, creaSaldoAcumulatPerMoviment } from '../lib/balance';
-import { avui, formatDateEs } from '../lib/dates';
+import { avui, faDiesAbans, formatDateEs } from '../lib/dates';
 import { centsToEs } from '../lib/numbers';
 import {
   aplicaReglesAMovimentsSenseCategoria,
@@ -21,7 +21,11 @@ import type { Categoria, Compte, Moviment, PeriodicitatRecurrent, ReglaCategorit
 import { PERIODICITAT_LABEL, TOTES_LES_PERIODICITATS } from '../lib/periodicitat';
 
 type FiltreTipus = 'tots' | 'ingres' | 'carrec';
+type FiltreTI = 'tots' | 'nomes' | 'exclou';
 type CampOrdre = 'dataOperacio' | 'concepteOriginal';
+
+/** Interval per defecte del llistat: últims 60 dies (desplegable amb 15/30/60/90). */
+const DIES_PER_DEFECTE = 60;
 
 interface FormRegla {
   patro: string;
@@ -55,11 +59,13 @@ function csvField(value: string): string {
 
 export function MovimentsList({ seleccionats, totsElsComptes, categories, regles, onChanged }: Props) {
   const [moviments, setMoviments] = useState<Moviment[]>([]);
-  const [dataDes, setDataDes] = useState('');
+  const [diesPreset, setDiesPreset] = useState(DIES_PER_DEFECTE);
+  const [dataDes, setDataDes] = useState(() => faDiesAbans(avui(), DIES_PER_DEFECTE));
   const [dataFins, setDataFins] = useState('');
   const [categoriaFiltre, setCategoriaFiltre] = useState('');
   const [text, setText] = useState('');
   const [tipus, setTipus] = useState<FiltreTipus>('tots');
+  const [filtreTI, setFiltreTI] = useState<FiltreTI>('tots');
   const [ordre, setOrdre] = useState<{ camp: CampOrdre; direccio: 'asc' | 'desc' }>({ camp: 'dataOperacio', direccio: 'desc' });
   const [suggeriments, setSuggeriments] = useState<SuggerimentAmbDetall[]>([]);
   const [reglaObertaPer, setReglaObertaPer] = useState<string | null>(null);
@@ -139,6 +145,12 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(refresh, [compteIds]);
 
+  function handleCanviaDiesPreset(dies: number) {
+    setDiesPreset(dies);
+    setDataDes(faDiesAbans(avui(), dies));
+    setDataFins('');
+  }
+
   const filtrats = useMemo(() => {
     const textNormalitzat = text.trim().toUpperCase();
     const resultat = moviments.filter((m) => {
@@ -147,6 +159,8 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
       if (categoriaFiltre && m.categoriaId !== categoriaFiltre) return false;
       if (tipus === 'ingres' && m.importCents < 0) return false;
       if (tipus === 'carrec' && m.importCents >= 0) return false;
+      if (filtreTI === 'nomes' && !m.esTransferenciaInterna) return false;
+      if (filtreTI === 'exclou' && m.esTransferenciaInterna) return false;
       if (textNormalitzat && !m.concepteNormalitzat.includes(textNormalitzat)) return false;
       return true;
     });
@@ -196,7 +210,7 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
       if (ordre.camp === 'concepteOriginal') return a.concepteOriginal.localeCompare(b.concepteOriginal) * dir || comparaParella(a, b);
       return a.dataOperacio.localeCompare(b.dataOperacio) * dir || comparaParella(a, b);
     });
-  }, [moviments, dataDes, dataFins, categoriaFiltre, text, tipus, ordre, rangCronologicTargetaPerMoviment]);
+  }, [moviments, dataDes, dataFins, categoriaFiltre, text, tipus, filtreTI, ordre, rangCronologicTargetaPerMoviment]);
 
   function canviaOrdre(camp: CampOrdre) {
     setOrdre((prev) => (prev.camp === camp ? { camp, direccio: prev.direccio === 'asc' ? 'desc' : 'asc' } : { camp, direccio: 'asc' }));
@@ -485,6 +499,15 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
 
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
         <label>
+          Interval:{' '}
+          <select value={diesPreset} onChange={(e) => handleCanviaDiesPreset(Number(e.target.value))}>
+            <option value={15}>Últims 15 dies</option>
+            <option value={30}>Últims 30 dies</option>
+            <option value={60}>Últims 60 dies</option>
+            <option value={90}>Últims 90 dies</option>
+          </select>
+        </label>
+        <label>
           Des de: <input type="date" value={dataDes} onChange={(e) => setDataDes(e.target.value)} />
         </label>
         <label>
@@ -507,6 +530,14 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
             <option value="tots">Tots</option>
             <option value="ingres">Ingressos</option>
             <option value="carrec">Càrrecs</option>
+          </select>
+        </label>
+        <label>
+          TI:{' '}
+          <select value={filtreTI} onChange={(e) => setFiltreTI(e.target.value as FiltreTI)}>
+            <option value="tots">Totes</option>
+            <option value="nomes">Només TI</option>
+            <option value="exclou">Sense TI</option>
           </select>
         </label>
         <label>
