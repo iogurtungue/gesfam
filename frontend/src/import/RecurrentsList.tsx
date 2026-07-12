@@ -92,7 +92,11 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
     );
   }
 
-  const ordenats = [...recurrents].sort((a, b) => a.dataPrevista.localeCompare(b.dataPrevista));
+  const ordenats = [...recurrents].sort(
+    (a, b) =>
+      (compteAlias.get(a.compteId) ?? a.compteId).localeCompare(compteAlias.get(b.compteId) ?? b.compteId) ||
+      a.dataPrevista.localeCompare(b.dataPrevista),
+  );
 
   return (
     <section style={{ marginTop: 24 }}>

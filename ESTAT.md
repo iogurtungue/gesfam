@@ -132,6 +132,15 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-12 — Candidats i confirmats ordenats per compte, amb el mateix format de columnes
+
+Feedback de l'usuari: els candidats detectats (targetes independents amb etiquetes en línia) i els recurrents confirmats (taula) no compartien format, i cap dels dos estava ordenat per compte.
+
+- `import/RecurrentsList.tsx`: ordenació ara per (àlies del compte, data prevista) en lloc de només data prevista.
+- `import/RecurrentsCandidatsList.tsx`: reescrit com a taula amb exactament les mateixes columnes que `RecurrentsList` (Data, Data fi, Concepte, Import, Compte, Periodicitat, Categoria, Referència, accions), mateixa ordenació per (compte, data). La columna "Origen" es substitueix per "Detecció" (nombre d'ocurrències i confiança, amb el rang d'import complet en el `title`) ja que un candidat encara no té un origen persistit. S'hi afegeix també un camp de Referència (abans no existia per a candidats) perquè es pugui omplir abans de confirmar, aprofitant que `confirmaCandidatRecurrent` ja acceptava aquest camp.
+
+`tsc -b`/`oxlint`/`vite build` nets. Sense verificació clic a clic en un navegador real (no hi ha eina de navegador disponible en aquesta sessió).
+
 ### 2026-07-12 — Crear un recurrent directament des de la pàgina de Moviments
 
 L'usuari va demanar poder crear un recurrent sense haver de canviar de pestanya quan veu un càrrec/ingrés recurrent a la llista de Moviments.

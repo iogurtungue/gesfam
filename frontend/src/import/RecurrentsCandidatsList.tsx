@@ -19,6 +19,7 @@ interface Esborrany {
   dataPrevista: string;
   dataFi: string;
   categoriaId: string;
+  referencia: string;
 }
 
 function clau(c: CandidatRecurrent): string {
@@ -35,10 +36,11 @@ function esborranyDe(c: CandidatRecurrent): Esborrany {
     dataPrevista: c.dataPrevista,
     dataFi: '',
     categoriaId: '',
+    referencia: '',
   };
 }
 
-/** Pantalla de revisió dels candidats detectats pel motor de periodicitat (sub-fase 3.4, especificacio.md 4.1.5): confirmar (amb possibles correccions), o ignorar (falsa alarma, no es torna a suggerir). */
+/** Pantalla de revisió dels candidats detectats pel motor de periodicitat (sub-fase 3.4, especificacio.md 4.1.5): confirmar (amb possibles correccions), o ignorar (falsa alarma, no es torna a suggerir). Mateixes columnes que la taula de recurrents confirmats. */
 export function RecurrentsCandidatsList({ candidats, comptes, categories, onChanged }: Props) {
   const [esborranys, setEsborranys] = useState<Record<string, Esborrany>>({});
   const [ocupat, setOcupat] = useState<string | null>(null);
@@ -67,6 +69,7 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
         dataPrevista: esborrany.dataPrevista,
         dataFi: esborrany.dataFi || undefined,
         categoriaId: esborrany.categoriaId || undefined,
+        referencia: esborrany.referencia.trim() || undefined,
       });
       onChanged();
     } finally {
@@ -99,6 +102,12 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
     );
   }
 
+  const ordenats = [...candidats].sort(
+    (a, b) =>
+      (compteAlias.get(a.compteId) ?? a.compteId).localeCompare(compteAlias.get(b.compteId) ?? b.compteId) ||
+      a.dataPrevista.localeCompare(b.dataPrevista),
+  );
+
   return (
     <section style={{ marginTop: 24 }}>
       <h2>Candidats detectats</h2>
@@ -106,72 +115,101 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
         Patrons detectats automàticament sobre l'històric de moviments de compte corrent. Corregeix-ne els valors si cal abans de confirmar,
         o ignora'ls si és una falsa alarma (no es tornaran a suggerir).
       </p>
-      {candidats.map((c) => {
-        const esborrany = esborranyPer(c);
-        const k = clau(c);
-        return (
-          <div key={k} style={{ border: '1px solid #999', padding: 12, marginBottom: 12, fontSize: 12 }}>
-            <div style={{ color: '#555', marginBottom: 6 }}>
-              {compteAlias.get(c.compteId) ?? c.compteId} — {c.ocurrencies} ocurrències, rang {centsToEs(c.importMinCents, false)}..
-              {centsToEs(c.importMaxCents, false)}, confiança {c.confianca}%
-            </div>
-            <label>
-              Concepte: <input value={esborrany.concepte} onChange={(e) => actualitzaEsborrany(c, { concepte: e.target.value })} />
-            </label>{' '}
-            <label>
-              Periodicitat:{' '}
-              <select value={esborrany.periodicitat} onChange={(e) => actualitzaEsborrany(c, { periodicitat: e.target.value as PeriodicitatRecurrent })}>
-                {PERIODICITATS_REPETITIVES.map((p) => (
-                  <option key={p} value={p}>
-                    {PERIODICITAT_LABEL[p]}
-                  </option>
-                ))}
-              </select>
-            </label>{' '}
-            <label>
-              Import:{' '}
-              <input
-                type="number"
-                step="0.01"
-                value={esborrany.importEuros}
-                onChange={(e) => actualitzaEsborrany(c, { importEuros: e.target.value })}
-                style={{ width: 70, textAlign: 'right' }}
-              />
-            </label>{' '}
-            <label title="L'import és una estimació, no un valor cert">
-              <input type="checkbox" checked={esborrany.importAproximat} onChange={(e) => actualitzaEsborrany(c, { importAproximat: e.target.checked })} />{' '}
-              aprox.
-            </label>{' '}
-            <label>
-              Propera data:{' '}
-              <input type="date" value={esborrany.dataPrevista} onChange={(e) => actualitzaEsborrany(c, { dataPrevista: e.target.value })} />
-            </label>{' '}
-            <label title="Última ocurrència esperada, opcional">
-              Data de finalització:{' '}
-              <input type="date" value={esborrany.dataFi} onChange={(e) => actualitzaEsborrany(c, { dataFi: e.target.value })} />
-            </label>{' '}
-            <label>
-              Categoria:{' '}
-              <select value={esborrany.categoriaId} onChange={(e) => actualitzaEsborrany(c, { categoriaId: e.target.value })}>
-                <option value="">--</option>
-                {categories.map((cat) => (
-                  <option key={cat.id} value={cat.id}>
-                    {cat.nom}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div style={{ marginTop: 6 }}>
-              <button onClick={() => handleConfirma(c)} disabled={ocupat === k}>
-                Confirmar
-              </button>{' '}
-              <button onClick={() => handleIgnora(c)} disabled={ocupat === k}>
-                Ignorar
-              </button>
-            </div>
-          </div>
-        );
-      })}
+      <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
+        <thead>
+          <tr>
+            <th style={cellStyle}>Data</th>
+            <th style={cellStyle}>Data fi</th>
+            <th style={cellStyle}>Concepte</th>
+            <th style={{ ...cellStyle, textAlign: 'right' }}>Import</th>
+            <th style={cellStyle}>Compte</th>
+            <th style={cellStyle}>Periodicitat</th>
+            <th style={cellStyle}>Categoria</th>
+            <th style={cellStyle}>Detecció</th>
+            <th style={cellStyle}>Referència</th>
+            <th style={cellStyle}></th>
+          </tr>
+        </thead>
+        <tbody>
+          {ordenats.map((c) => {
+            const esborrany = esborranyPer(c);
+            const k = clau(c);
+            return (
+              <tr key={k}>
+                <td style={cellStyle}>
+                  <input type="date" value={esborrany.dataPrevista} onChange={(e) => actualitzaEsborrany(c, { dataPrevista: e.target.value })} />
+                </td>
+                <td style={cellStyle}>
+                  <input type="date" value={esborrany.dataFi} onChange={(e) => actualitzaEsborrany(c, { dataFi: e.target.value })} />
+                </td>
+                <td style={cellStyle}>
+                  <input value={esborrany.concepte} onChange={(e) => actualitzaEsborrany(c, { concepte: e.target.value })} style={{ width: '100%' }} />
+                </td>
+                <td style={cellStyle}>
+                  <input
+                    type="number"
+                    step="0.01"
+                    value={esborrany.importEuros}
+                    onChange={(e) => actualitzaEsborrany(c, { importEuros: e.target.value })}
+                    style={{ width: 70, textAlign: 'right' }}
+                  />
+                  <label title="L'import és una estimació, no un valor cert">
+                    <input
+                      type="checkbox"
+                      checked={esborrany.importAproximat}
+                      onChange={(e) => actualitzaEsborrany(c, { importAproximat: e.target.checked })}
+                    />{' '}
+                    aprox.
+                  </label>
+                </td>
+                <td style={cellStyle}>{compteAlias.get(c.compteId) ?? c.compteId}</td>
+                <td style={cellStyle}>
+                  <select value={esborrany.periodicitat} onChange={(e) => actualitzaEsborrany(c, { periodicitat: e.target.value as PeriodicitatRecurrent })}>
+                    {PERIODICITATS_REPETITIVES.map((p) => (
+                      <option key={p} value={p}>
+                        {PERIODICITAT_LABEL[p]}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td style={cellStyle}>
+                  <select value={esborrany.categoriaId} onChange={(e) => actualitzaEsborrany(c, { categoriaId: e.target.value })}>
+                    <option value="">--</option>
+                    {categories.map((cat) => (
+                      <option key={cat.id} value={cat.id}>
+                        {cat.nom}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td
+                  style={cellStyle}
+                  title={`${c.ocurrencies} ocurrències detectades, rang ${centsToEs(c.importMinCents, false)}..${centsToEs(c.importMaxCents, false)}, confiança ${c.confianca}%`}
+                >
+                  {c.ocurrencies} oc., {c.confianca}%
+                </td>
+                <td style={cellStyle}>
+                  <input
+                    value={esborrany.referencia}
+                    onChange={(e) => actualitzaEsborrany(c, { referencia: e.target.value })}
+                    style={{ width: 80 }}
+                  />
+                </td>
+                <td style={cellStyle}>
+                  <button onClick={() => handleConfirma(c)} disabled={ocupat === k}>
+                    Confirmar
+                  </button>{' '}
+                  <button onClick={() => handleIgnora(c)} disabled={ocupat === k}>
+                    Ignorar
+                  </button>
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </section>
   );
 }
+
+const cellStyle: React.CSSProperties = { border: '1px solid #ccc', padding: '2px 6px' };
