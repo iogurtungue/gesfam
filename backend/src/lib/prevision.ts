@@ -27,8 +27,10 @@ export interface EsdevenimentPrevist {
   recurrentId: string;
   categoriaId?: string;
   esTransferenciaInterna?: boolean;
-  /** Només per a `unica`: la `dataPrevista` original ja havia passat (i encara no s'ha conciliat) quan es va calcular la previsió, així que es mostra avui en lloc de desaparèixer sense avís. */
+  /** Només per a `unica`: la `dataPrevista` original ja havia passat (i encara no s'ha conciliat) quan es va calcular la previsió, així que es mostra desplaçat (`DIES_DESPLACAMENT_VENCUT`) en lloc de desaparèixer sense avís. */
   vençut?: boolean;
+  /** Només quan `vençut`: la data de venciment original (abans de desplaçar-la), per mostrar-la a la UI. */
+  dataPrevistaOriginal?: string;
 }
 
 export interface PuntSerieDiaria {
@@ -40,6 +42,8 @@ export interface PuntSerieDiaria {
 /** "Pocs dies" (especificacio.md 4.2, sub-fase 3.6): finestra al voltant de la data prevista dins la qual un moviment real ja importat es considera la liquidació d'aquell recurrent. */
 const FINESTRA_CONCILIACIO_DIES = 3;
 const TOLERANCIA_IMPORT_CONCILIACIO = 0.15;
+/** Un compromís puntual (`unica`) vençut i encara no conciliat es mostra desplaçat aquests dies respecte a avui (no exactament avui), perquè quedi clarament identificat com a pendent sense amuntegar-se tot a la data d'avui. */
+const DIES_DESPLACAMENT_VENCUT = 10;
 
 function esConciliat(compteId: string, data: string, importCents: number, moviments: MovimentPerConciliacio[]): boolean {
   const marge = Math.abs(importCents) * TOLERANCIA_IMPORT_CONCILIACIO;
@@ -78,9 +82,10 @@ function avancaPeriodicitat(data: string, periodicitat: Exclude<PeriodicitatRecu
  * comprovar conciliació de les ocurrències saltades) fins a la primera
  * ocurrència que ja no sigui anterior a avui. Un compromís puntual (`unica`)
  * amb `dataPrevista` passada i encara no conciliat, en canvi, no desapareix:
- * es projecta avui mateix, marcat `vençut: true` perquè es pugui distingir a
- * la UI d'un venciment que realment és avui. Pura funció — no llegeix ni
- * escriu la base de dades.
+ * es projecta desplaçat `DIES_DESPLACAMENT_VENCUT` dies després d'avui,
+ * marcat `vençut: true` (amb `dataPrevistaOriginal` per mostrar el venciment
+ * real) perquè es pugui distingir a la UI d'un venciment que realment cau
+ * en aquella data. Pura funció — no llegeix ni escriu la base de dades.
  */
 export function projectaEsdeveniments(
   recurrents: RecurrentPerProjeccio[],
@@ -95,7 +100,7 @@ export function projectaEsdeveniments(
     if (r.periodicitat === 'unica') {
       if (r.dataPrevista > dataLimit) continue;
       const vençut = r.dataPrevista < avui;
-      const data = vençut ? avui : r.dataPrevista;
+      const data = vençut ? afegeixDies(avui, DIES_DESPLACAMENT_VENCUT) : r.dataPrevista;
       if (r.dataFi && data > r.dataFi) continue;
       if (esConciliat(r.compteId, r.dataPrevista, r.importCents, movimentsPerConciliacio)) continue;
       esdeveniments.push({
@@ -106,7 +111,7 @@ export function projectaEsdeveniments(
         recurrentId: r.id,
         categoriaId: r.categoriaId,
         esTransferenciaInterna: r.esTransferenciaInterna,
-        ...(vençut && { vençut: true }),
+        ...(vençut && { vençut: true, dataPrevistaOriginal: r.dataPrevista }),
       });
       continue;
     }

@@ -229,8 +229,10 @@ export interface EsdevenimentPrevist {
   recurrentId: string;
   categoriaId?: string;
   esTransferenciaInterna?: boolean;
-  /** Només per a compromisos puntuals: la data prevista original ja havia passat i encara no s'ha conciliat, així que es mostra avui en lloc de desaparèixer. */
+  /** Només per a compromisos puntuals: la data prevista original ja havia passat i encara no s'ha conciliat, així que es mostra desplaçada (avui + 10 dies) en lloc de desaparèixer. */
   vençut?: boolean;
+  /** Només quan `vençut`: la data de venciment original, per mostrar-la a la UI. */
+  dataPrevistaOriginal?: string;
 }
 
 export interface PuntSerieDiaria {

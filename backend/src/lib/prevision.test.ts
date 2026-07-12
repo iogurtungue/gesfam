@@ -82,7 +82,7 @@ describe('projectaEsdeveniments', () => {
     expect(esdeveniments.map((e) => e.data)).toEqual(['2026-07-15', '2026-08-15']);
   });
 
-  it('projects an overdue unica (not yet conciliated) at today, flagged as vençut', () => {
+  it('projects an overdue unica (not yet conciliated) 10 days after today, flagged as vençut with the original due date', () => {
     const esdeveniments = projectaEsdeveniments(
       [recurrent({ periodicitat: 'unica', dataPrevista: '2026-06-01' })],
       [],
@@ -91,7 +91,15 @@ describe('projectaEsdeveniments', () => {
     );
 
     expect(esdeveniments).toEqual([
-      { data: AVUI, compteId: 'compte-1', concepte: 'CONCEPTE', importCents: -5000, recurrentId: 'r1', vençut: true },
+      {
+        data: '2026-07-22',
+        compteId: 'compte-1',
+        concepte: 'CONCEPTE',
+        importCents: -5000,
+        recurrentId: 'r1',
+        vençut: true,
+        dataPrevistaOriginal: '2026-06-01',
+      },
     ]);
   });
 
@@ -124,6 +132,18 @@ describe('projectaEsdeveniments', () => {
   it('does not clamp an overdue unica past its own dataFi', () => {
     const esdeveniments = projectaEsdeveniments(
       [recurrent({ periodicitat: 'unica', dataPrevista: '2026-06-01', dataFi: '2026-06-05' })],
+      [],
+      30,
+      AVUI,
+    );
+
+    expect(esdeveniments).toEqual([]);
+  });
+
+  it('does not show an overdue unica whose dataFi falls between today and the 10-day displaced date', () => {
+    // AVUI=2026-07-12, displaced date would be 2026-07-22, but dataFi=2026-07-15 has already passed by then.
+    const esdeveniments = projectaEsdeveniments(
+      [recurrent({ periodicitat: 'unica', dataPrevista: '2026-06-01', dataFi: '2026-07-15' })],
       [],
       30,
       AVUI,

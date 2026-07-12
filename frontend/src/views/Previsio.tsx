@@ -204,10 +204,10 @@ export function Previsio({ seleccionats, categories }: Props) {
                     {e.concepte}
                     {e.vençut && (
                       <span
-                        title="La data prevista original ja havia passat i encara no s'ha conciliat amb cap moviment real; es mostra avui perquè no quedi fora de la previsió."
+                        title="La data prevista original ja havia passat i encara no s'ha conciliat amb cap moviment real; es mostra desplaçada perquè no quedi fora de la previsió."
                         style={{ color: '#d90', marginLeft: 6, fontWeight: 'bold' }}
                       >
-                        ⚠ vençut
+                        ⚠ vençut{e.dataPrevistaOriginal && ` (venciment: ${formatDateEs(e.dataPrevistaOriginal)})`}
                       </span>
                     )}
                   </td>
