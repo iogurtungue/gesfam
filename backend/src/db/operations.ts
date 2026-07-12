@@ -937,6 +937,7 @@ export function eliminaRecurrent(id: string): void {
   if (!getDb().prepare('SELECT 1 FROM recurrents WHERE id = ?').get(id)) {
     throw new Error('El recurrent indicat no existeix.');
   }
+  backupDbFile();
   getDb().prepare('DELETE FROM recurrents WHERE id = ?').run(id);
 }
 

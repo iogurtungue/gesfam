@@ -133,6 +133,12 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-12 — Bug: eliminar un recurrent no en feia còpia de seguretat abans
+
+L'usuari va esborrar per error un recurrent de targeta i va preguntar com recuperar-lo. Resposta pràctica: com que és una estimació de targeta (sub-fase 3.5 revisada), es recalcula sempre a partir dels moviments reals — en eliminar el `Recurrent` confirmat, torna a aparèixer com a candidat pendent de confirmar la propera vegada que es demanen els candidats (verificat contra el servidor real de l'usuari, només lectura: les dues targetes ING-TG-JN i ING-TG-JA ja tornaven a mostrar l'estimació com a candidat). No es perd cap dada perquè el "recurrent" no és més que una confirmació d'un càlcul reproduïble.
+
+Però això només s'aplica a recurrents derivats d'un candidat (detectats o d'estimació de targeta); un recurrent **manual** eliminat per error no es pot regenerar sol. Es va detectar que `eliminaRecurrent` era l'única operació destructiva de tota l'aplicació que **no** feia una còpia de seguretat abans d'esborrar (a diferència d'`eliminaMoviment`, `eliminaCompte`, `reinicialitzaBaseDades`, etc.) — corregit: `db/operations.ts` hi afegeix ara una crida a `backupDbFile()` abans del `DELETE`. Verificat per HTTP contra un servidor i dades temporals (0 còpies abans, 1 després d'eliminar). Sense test dedicat a `operations.test.ts` — cap altra operació similar en té (el DB de test és `:memory:`, on `backupDbFile()` ja és un no-op per disseny), coherent amb el criteri existent.
+
 ### 2026-07-12 — Sub-fase 3.5 revisada: estimació agregada de targeta (substitueix la detecció per patrons)
 
 L'usuari va trobar la 3.5 original (detecció per patrons de repetició també a les targetes) massa complexa i poc fiable per a aquest cas: una targeta té massa comerços diferents amb imports irregulars i poques ocurrències cadascun perquè la detecció per patró tingui sentit. El que realment cal per a la tresoreria és **quant costarà en total la propera liquidació**, no saber que "Bon Àrea" es repeteix cada setmana. Es demana explícitament **no** desglossar per categoria tampoc — només un total agregat per targeta.
