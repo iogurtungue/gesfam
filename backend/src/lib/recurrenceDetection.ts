@@ -22,7 +22,7 @@ export interface CandidatRecurrent {
   importEstimatCents: number;
   importMinCents: number;
   importMaxCents: number;
-  /** Propera ocurrència esperada, calculada a partir de l'última ocurrència real. */
+  /** Propera ocurrència esperada: sempre avui o en el futur, encara que l'última ocurrència real sigui de fa mesos (es projecta endavant període a període, mai es mostra una data ja passada). */
   dataPrevista: string;
   ocurrencies: number;
   /** 0-100: combina nombre d'ocurrències i regularitat dels intervals (spec 4.1.4). Heurística de la sub-fase 3.3, ajustable. */
@@ -75,6 +75,21 @@ function afegeixMesos(iso: string, mesos: number): string {
   return `${anyObjectiu}-${String(mesObjectiu + 1).padStart(2, '0')}-${String(diaClampat).padStart(2, '0')}`;
 }
 
+function isoAvui(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/** Avança `data` un període (mesos de calendari o dies, segons la periodicitat) repetidament fins que ja no quedi en el passat respecte a `avui` — la propera ocurrència prevista d'un patró ha de ser sempre una data futura (o avui), mai una que ja hauria d'haver passat perquè fa temps que no arriben moviments nous d'aquest concepte. */
+function properaOcurrencia(ultimaData: string, periodicitat: DefinicioPeriodicitat, avui: string): string {
+  const avanca = (data: string) => (periodicitat.mesos !== undefined ? afegeixMesos(data, periodicitat.mesos) : afegeixDies(data, periodicitat.diesCentre));
+  let prevista = avanca(ultimaData);
+  while (prevista < avui) {
+    prevista = avanca(prevista);
+  }
+  return prevista;
+}
+
 function mediana(valors: number[]): number {
   const ordenats = [...valors].sort((a, b) => a - b);
   const mig = Math.floor(ordenats.length / 2);
@@ -88,7 +103,7 @@ function calculaConfianca(ocurrencies: number, desviacioMitjanaDies: number, tol
   return Math.round(100 * (0.5 * regularitat + 0.5 * quantitat));
 }
 
-function analitzaGrup(grup: MovimentCandidat[]): CandidatRecurrent | null {
+function analitzaGrup(grup: MovimentCandidat[], avui: string): CandidatRecurrent | null {
   const ordenat = [...grup].sort((a, b) => a.dataOperacio.localeCompare(b.dataOperacio));
 
   // Criteri secundari d'agrupació (spec 4.1.2): descarta ocurrències l'import
@@ -119,8 +134,7 @@ function analitzaGrup(grup: MovimentCandidat[]): CandidatRecurrent | null {
     importEstimatCents: Math.round(mediana(importsSigned)),
     importMinCents: Math.min(...importsSigned),
     importMaxCents: Math.max(...importsSigned),
-    dataPrevista:
-      periodicitat.mesos !== undefined ? afegeixMesos(ultim.dataOperacio, periodicitat.mesos) : afegeixDies(ultim.dataOperacio, periodicitat.diesCentre),
+    dataPrevista: properaOcurrencia(ultim.dataOperacio, periodicitat, avui),
     ocurrencies: dinsTolerancia.length,
     confianca: calculaConfianca(dinsTolerancia.length, desviacioMitjana, periodicitat.toleranciaDies),
     movimentIds: dinsTolerancia.map((m) => m.id),
@@ -137,8 +151,12 @@ function analitzaGrup(grup: MovimentCandidat[]): CandidatRecurrent | null {
  * transferències internes i contrapartides de liquidació, exclosos els que
  * ja pertanyen a un recurrent confirmat/ignorat) i qui, en una sub-fase
  * posterior (3.4), persistirà les confirmacions de l'usuari.
+ *
+ * `avui` (ISO, per defecte la data real) és només per fer el càlcul de la
+ * propera ocurrència testejable de manera determinista — vegeu
+ * `properaOcurrencia`.
  */
-export function detectaRecurrents(moviments: MovimentCandidat[]): CandidatRecurrent[] {
+export function detectaRecurrents(moviments: MovimentCandidat[], avui: string = isoAvui()): CandidatRecurrent[] {
   const grups = new Map<string, MovimentCandidat[]>();
   for (const m of moviments) {
     if (m.importCents === 0) continue;
@@ -153,7 +171,7 @@ export function detectaRecurrents(moviments: MovimentCandidat[]): CandidatRecurr
 
   const candidats: CandidatRecurrent[] = [];
   for (const grup of grups.values()) {
-    const candidat = analitzaGrup(grup);
+    const candidat = analitzaGrup(grup, avui);
     if (candidat) candidats.push(candidat);
   }
   return candidats.sort((a, b) => a.dataPrevista.localeCompare(b.dataPrevista));
