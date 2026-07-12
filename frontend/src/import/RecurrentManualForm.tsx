@@ -2,6 +2,18 @@ import { useState } from 'react';
 import { creaRecurrentManual } from '../api/client';
 import type { Categoria, Compte, PeriodicitatRecurrent } from '../api/types';
 import { PERIODICITAT_LABEL, TOTES_LES_PERIODICITATS } from '../lib/periodicitat';
+import {
+  cellAccions,
+  cellCategoria,
+  cellCompte,
+  cellConcepte,
+  cellData,
+  cellImport,
+  cellOrigen,
+  cellReferencia,
+  cellStyle,
+  cellPeriodicitat,
+} from '../lib/recurrentsTable';
 
 interface Props {
   comptes: Compte[];
@@ -9,7 +21,7 @@ interface Props {
   onChanged: () => void;
 }
 
-/** Afegir manualment un recurrent que el motor de detecció no ha vist (spec 4.1.5), p. ex. un rebut anual amb una sola ocurrència a l'històric. */
+/** Afegir manualment un recurrent que el motor de detecció no ha vist (spec 4.1.5), p. ex. un rebut anual amb una sola ocurrència a l'històric. Mateix format de columnes (i amplades) que RecurrentsList/RecurrentsCandidatsList. */
 export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
   const [compteId, setCompteId] = useState(comptes[0]?.id ?? '');
   const [concepte, setConcepte] = useState('');
@@ -63,60 +75,78 @@ export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
       <p style={{ fontSize: 12, color: '#555' }}>
         Per a un recurrent que el motor de detecció encara no ha vist (p. ex. un rebut anual amb una sola ocurrència a l'històric).
       </p>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: 12 }}>
-        <label>
-          Compte:{' '}
-          <select value={compteId} onChange={(e) => setCompteId(e.target.value)}>
-            {comptes.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.alias}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Concepte: <input value={concepte} onChange={(e) => setConcepte(e.target.value)} />
-        </label>
-        <label>
-          Periodicitat:{' '}
-          <select value={periodicitat} onChange={(e) => setPeriodicitat(e.target.value as PeriodicitatRecurrent)}>
-            {TOTES_LES_PERIODICITATS.map((p) => (
-              <option key={p} value={p}>
-                {PERIODICITAT_LABEL[p]}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Import: <input type="number" step="0.01" value={importEuros} onChange={(e) => setImportEuros(e.target.value)} style={{ width: 80 }} />
-        </label>
-        <label title="L'import és una estimació, no un valor cert">
-          <input type="checkbox" checked={importAproximat} onChange={(e) => setImportAproximat(e.target.checked)} /> aproximat
-        </label>
-        <label>
-          Data: <input type="date" value={dataPrevista} onChange={(e) => setDataPrevista(e.target.value)} />
-        </label>
-        <label title="Última ocurrència esperada, opcional">
-          Data de finalització: <input type="date" value={dataFi} onChange={(e) => setDataFi(e.target.value)} />
-        </label>
-        <label>
-          Categoria:{' '}
-          <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
-            <option value="">--</option>
-            {categories.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.nom}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          Referència: <input value={referencia} onChange={(e) => setReferencia(e.target.value)} style={{ width: 100 }} />
-        </label>
-        <button onClick={handleAfegeix} disabled={busy}>
-          Afegir
-        </button>
-      </div>
+      <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
+        <thead>
+          <tr>
+            <th style={{ ...cellStyle, ...cellCompte }}>Compte</th>
+            <th style={{ ...cellStyle, ...cellPeriodicitat }}>Periodicitat</th>
+            <th style={{ ...cellStyle, ...cellData }}>Data</th>
+            <th style={{ ...cellStyle, ...cellData }}>Data fi</th>
+            <th style={{ ...cellStyle, ...cellConcepte }}>Concepte</th>
+            <th style={{ ...cellStyle, ...cellImport }}>Import</th>
+            <th style={{ ...cellStyle, ...cellCategoria }}>Categoria</th>
+            <th style={{ ...cellStyle, ...cellOrigen }}>Origen</th>
+            <th style={{ ...cellStyle, ...cellReferencia }}>Referència</th>
+            <th style={{ ...cellStyle, ...cellAccions }}></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style={{ ...cellStyle, ...cellCompte }}>
+              <select value={compteId} onChange={(e) => setCompteId(e.target.value)}>
+                {comptes.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.alias}
+                  </option>
+                ))}
+              </select>
+            </td>
+            <td style={{ ...cellStyle, ...cellPeriodicitat }}>
+              <select value={periodicitat} onChange={(e) => setPeriodicitat(e.target.value as PeriodicitatRecurrent)}>
+                {TOTES_LES_PERIODICITATS.map((p) => (
+                  <option key={p} value={p}>
+                    {PERIODICITAT_LABEL[p]}
+                  </option>
+                ))}
+              </select>
+            </td>
+            <td style={{ ...cellStyle, ...cellData }}>
+              <input type="date" value={dataPrevista} onChange={(e) => setDataPrevista(e.target.value)} />
+            </td>
+            <td style={{ ...cellStyle, ...cellData }} title="Última ocurrència esperada, opcional">
+              <input type="date" value={dataFi} onChange={(e) => setDataFi(e.target.value)} />
+            </td>
+            <td style={{ ...cellStyle, ...cellConcepte }}>
+              <input value={concepte} onChange={(e) => setConcepte(e.target.value)} style={{ width: '100%' }} />
+            </td>
+            <td style={{ ...cellStyle, ...cellImport }}>
+              <input type="number" step="0.01" value={importEuros} onChange={(e) => setImportEuros(e.target.value)} style={{ width: 70, textAlign: 'right' }} />
+              <label title="L'import és una estimació, no un valor cert">
+                <input type="checkbox" checked={importAproximat} onChange={(e) => setImportAproximat(e.target.checked)} /> aprox.
+              </label>
+            </td>
+            <td style={{ ...cellStyle, ...cellCategoria }}>
+              <select value={categoriaId} onChange={(e) => setCategoriaId(e.target.value)}>
+                <option value="">--</option>
+                {categories.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.nom}
+                  </option>
+                ))}
+              </select>
+            </td>
+            <td style={{ ...cellStyle, ...cellOrigen }}>Manual</td>
+            <td style={{ ...cellStyle, ...cellReferencia }}>
+              <input value={referencia} onChange={(e) => setReferencia(e.target.value)} style={{ width: '100%' }} />
+            </td>
+            <td style={{ ...cellStyle, ...cellAccions }}>
+              <button onClick={handleAfegeix} disabled={busy}>
+                Afegir
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
       {error && <p style={{ color: '#c00' }}>{error}</p>}
     </section>
   );

@@ -133,6 +133,20 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-12 — Recurrents: mides de columna ajustades i el formulari manual també en taula
+
+Ajustos concrets d'amplada demanats per l'usuari sobre `lib/recurrentsTable.ts` (font única de les tres seccions):
+
+- Compte, Periodicitat, Import i Origen/Detecció: es mantenen a la mida actual.
+- Data i Data fi: +20% (95px -> 114px).
+- Categoria: +25% (120px -> 150px).
+- Referència: +20% (90px -> 108px).
+- Concepte: sense amplada fixa (abans tenia un `maxWidth: 220` que la limitava) — ara absorbeix tot l'espai que deixen lliure la resta de columnes fixes, com demanava l'usuari ("mida variable en funció de les altres columnes").
+
+`import/RecurrentManualForm.tsx` (formulari d'afegir un recurrent manualment) es converteix en una taula d'una sola fila amb exactament les mateixes columnes i amplades que `RecurrentsList`/`RecurrentsCandidatsList` (Compte, Periodicitat, Data, Data fi, Concepte, Import, Categoria, Referència), en lloc de la fila d'etiquetes en línia que tenia abans. La columna "Origen" hi mostra el text fix "Manual" (informatiu, no editable, ja que un recurrent creat des d'aquest formulari sempre té `origen=manual`).
+
+`tsc -b`/`oxlint`/`vite build` nets.
+
 ### 2026-07-12 — Recurrents: Periodicitat després de Compte, i amplades de columna equivalents entre taules
 
 - `lib/recurrentsTable.ts` (nou): estils de columna compartits (`cellCompte`, `cellPeriodicitat`, `cellData`, `cellConcepte`, `cellImport`, `cellCategoria`, `cellOrigen`, `cellReferencia`, `cellAccions`) amb amplada fixa (`width`/`minWidth`/`maxWidth`), mateix patró `amplaFixa` que ja fa servir `MovimentsList.tsx`. Font única perquè `RecurrentsList` i `RecurrentsCandidatsList` no puguin divergir en amplada columna a columna.
