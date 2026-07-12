@@ -143,6 +143,10 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 5 (opcional)**: simulacions manuals, despesa difusa, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-12 — Previsió: la barra de filtres es mou sota el gràfic, just abans de la taula
+
+Ajust de seguida després de l'entrada anterior: l'usuari va demanar que la barra de filtres (Categoria/Tipus/TI/Text) quedés situada sota la secció de Previsió (el gràfic), just abans de "Moviments previstos" — abans quedava entre el selector d'horitzó i el gràfic. `views/Previsio.tsx`: bloc de filtres mogut després del `<h3>Moviments previstos</h3>`, sense cap canvi de lògica (mateix estat, mateix filtratge). `tsc -b`/`oxlint`/`vite build` nets; 36 tests frontend sense canvis.
+
 ### 2026-07-12 — Filtres a Recurrents i Previsió, camp TI a Recurrent, Previsió reubicada
 
 L'usuari ha demanat: (1) a la pestanya Recurrents, poder filtrar per Compte/Periodicitat/Categoria i poder marcar un recurrent com a Transferència Interna (TI); (2) a la pestanya Previsió, ubicar-la després de "Moviments" i que tingui els mateixos filtres que Moviments.

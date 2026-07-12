@@ -110,6 +110,22 @@ export function Previsio({ seleccionats, categories }: Props) {
         </label>
       </div>
 
+      {evolucio.length > 1 && (
+        <div style={{ width: '100%', height: 300, marginBottom: 24 }}>
+          <ResponsiveContainer>
+            <LineChart data={evolucio}>
+              <CartesianGrid strokeDasharray="3 3" />
+              <XAxis dataKey="dataLabel" />
+              <YAxis />
+              <Tooltip formatter={(value) => `${Number(value).toFixed(2)} €`} />
+              <Line type="stepAfter" dataKey="saldo" name="Saldo projectat" dot={false} stroke="#2a6" />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+
+      <h3>Moviments previstos</h3>
+
       <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
         <label>
           Categoria:{' '}
@@ -143,21 +159,6 @@ export function Previsio({ seleccionats, categories }: Props) {
         </label>
       </div>
 
-      {evolucio.length > 1 && (
-        <div style={{ width: '100%', height: 300, marginBottom: 24 }}>
-          <ResponsiveContainer>
-            <LineChart data={evolucio}>
-              <CartesianGrid strokeDasharray="3 3" />
-              <XAxis dataKey="dataLabel" />
-              <YAxis />
-              <Tooltip formatter={(value) => `${Number(value).toFixed(2)} €`} />
-              <Line type="stepAfter" dataKey="saldo" name="Saldo projectat" dot={false} stroke="#2a6" />
-            </LineChart>
-          </ResponsiveContainer>
-        </div>
-      )}
-
-      <h3>Moviments previstos</h3>
       {previsio.esdeveniments.length === 0 ? (
         <p style={{ fontSize: 12, color: '#555' }}>Cap moviment previst en aquest horitzó.</p>
       ) : filtrats.length === 0 ? (
