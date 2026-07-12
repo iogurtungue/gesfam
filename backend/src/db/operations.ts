@@ -18,13 +18,21 @@ import { splitNousIDuplicats } from '../dedup/index.ts';
 import { splitNousRecurrentsIDuplicats } from '../dedup/recurrents.ts';
 import { pickCategoriaId } from '../lib/categorization.ts';
 import { normalizeConceptForDedup, normalizeConceptForRecurrence } from '../lib/concept.ts';
+import { isoAvui } from '../lib/dates.ts';
 import { computeContrapartidaId } from '../lib/hash.ts';
 import { suggereixTransferenciesInternes, type SuggerimentTransferencia } from '../lib/internalTransfers.ts';
 import { pickTargetaLiquidacio } from '../lib/liquidacioTargeta.ts';
 import {
+  construeixSerieDiaria,
+  projectaEsdeveniments,
+  type EsdevenimentPrevist,
+  type MovimentPerConciliacio,
+  type PuntSerieDiaria,
+  type RecurrentPerProjeccio,
+} from '../lib/prevision.ts';
+import {
   detectaRecurrents,
   estimaLiquidacioTargeta,
-  isoAvui,
   type CandidatRecurrent,
   type MovimentCandidat,
   type MovimentTargetaCandidat,
@@ -1073,6 +1081,71 @@ export function detectaCandidatsRecurrents(avui: string = isoAvui()): CandidatRe
   }
 
   return [...candidatsPatro, ...candidatsTargeta].sort((a, b) => a.dataPrevista.localeCompare(b.dataPrevista));
+}
+
+// --- Motor de previsió (especificacio.md 4.3, sub-fase 4.1) ---
+
+export interface Previsio {
+  saldosInicials: Record<string, number>;
+  esdeveniments: EsdevenimentPrevist[];
+  serieDiaria: PuntSerieDiaria[];
+}
+
+/**
+ * Saldo actual per compte a partir de moviments ja importats, amb SQL simple
+ * (sense reproduir la lògica d'ordenació/desempat del frontend per a targetes
+ * amb moviments del mateix dia, innecessària aquí: la suma és independent de
+ * l'ordre). Targetes: suma de tots els moviments (deute acumulat, sense saldo
+ * bancari propi). Comptes corrent: `saldoPosteriorCents` del moviment amb la
+ * `(dataOperacio, seq)` més recent — `seq` és estrictament creixent en ordre
+ * d'importació i el saldo posterior és informat pel banc, no inferit.
+ */
+function calculaSaldosActuals(comptes: Compte[]): Record<string, number> {
+  const db = getDb();
+  const saldos: Record<string, number> = {};
+  for (const compte of comptes) {
+    if (compte.tipus === 'targeta') {
+      const { total } = db.prepare('SELECT COALESCE(SUM(import_cents), 0) AS total FROM moviments WHERE compte_id = ?').get(compte.id) as {
+        total: number;
+      };
+      saldos[compte.id] = total;
+    } else {
+      const row = db
+        .prepare('SELECT saldo_posterior_cents FROM moviments WHERE compte_id = ? ORDER BY data_operacio DESC, seq DESC LIMIT 1')
+        .get(compte.id) as { saldo_posterior_cents: number | null } | undefined;
+      saldos[compte.id] = row?.saldo_posterior_cents ?? 0;
+    }
+  }
+  return saldos;
+}
+
+export function calculaPrevisio(compteIds: string[], horitzoDies: number, avui: string = isoAvui()): Previsio {
+  const comptes = listComptes().filter((c) => compteIds.includes(c.id));
+  if (comptes.length === 0) return { saldosInicials: {}, esdeveniments: [], serieDiaria: [] };
+
+  const saldosInicials = calculaSaldosActuals(comptes);
+
+  const recurrents: RecurrentPerProjeccio[] = listRecurrents()
+    .filter((r) => r.estat === 'confirmat' && compteIds.includes(r.compteId))
+    .map((r) => ({
+      id: r.id,
+      compteId: r.compteId,
+      concepte: r.concepte,
+      periodicitat: r.periodicitat,
+      importCents: r.importCents,
+      dataPrevista: r.dataPrevista,
+      dataFi: r.dataFi,
+      categoriaId: r.categoriaId,
+    }));
+
+  const movimentsPerConciliacio: MovimentPerConciliacio[] = listMovimentsPerComptes(compteIds)
+    .filter((m) => !m.esTransferenciaInterna)
+    .map((m) => ({ compteId: m.compteId, dataOperacio: m.dataOperacio, importCents: m.importCents }));
+
+  const esdeveniments = projectaEsdeveniments(recurrents, movimentsPerConciliacio, horitzoDies, avui);
+  const serieDiaria = construeixSerieDiaria(saldosInicials, esdeveniments, horitzoDies, avui);
+
+  return { saldosInicials, esdeveniments, serieDiaria };
 }
 
 // --- Còpia de seguretat (NFR secció 2) ---

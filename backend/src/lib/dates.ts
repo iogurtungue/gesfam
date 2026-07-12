@@ -55,3 +55,34 @@ export function parseNorma43Date(aammdd: string): string {
   const dd = aammdd.slice(4, 6);
   return `20${yy}-${mm}-${dd}`;
 }
+
+/** Data real d'avui en ISO (getters locals, mai `toISOString()` — mateix criteri que `isoFromDateCell`: evita el desplaçament d'un dia en fusos per davant d'UTC). */
+export function isoAvui(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+/** Afegeix `dies` dies a una data ISO. */
+export function afegeixDies(iso: string, dies: number): string {
+  const data = new Date(`${iso}T00:00:00Z`);
+  data.setUTCDate(data.getUTCDate() + dies);
+  return data.toISOString().slice(0, 10);
+}
+
+/** Afegeix `mesos` mesos de calendari a una data ISO, preservant el dia del mes i clampant-lo a l'últim dia del mes objectiu si aquest no existeix (p. ex. 31/01 + 1 mes -> 28 o 29/02). */
+export function afegeixMesos(iso: string, mesos: number): string {
+  const [y, m, d] = iso.split('-').map(Number);
+  const totalMesos = y * 12 + (m - 1) + mesos;
+  const anyObjectiu = Math.floor(totalMesos / 12);
+  const mesObjectiu = ((totalMesos % 12) + 12) % 12;
+  const ultimDiaMesObjectiu = new Date(Date.UTC(anyObjectiu, mesObjectiu + 1, 0)).getUTCDate();
+  const diaClampat = Math.min(d, ultimDiaMesObjectiu);
+  return `${anyObjectiu}-${pad2(mesObjectiu + 1)}-${pad2(diaClampat)}`;
+}
+
+/** Nombre de dies entre dues dates ISO (b - a). */
+export function diesEntre(a: string, b: string): number {
+  const da = new Date(`${a}T00:00:00Z`).getTime();
+  const db = new Date(`${b}T00:00:00Z`).getTime();
+  return (db - da) / 86_400_000;
+}

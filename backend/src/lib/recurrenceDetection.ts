@@ -1,4 +1,5 @@
 import { normalizeConceptForRecurrence } from './concept';
+import { afegeixDies, afegeixMesos, diesEntre, isoAvui } from './dates';
 import type { PeriodicitatRecurrent } from '../db/types';
 
 export interface MovimentCandidat {
@@ -51,35 +52,6 @@ const PERIODICITATS: DefinicioPeriodicitat[] = [
   { key: 'semestral', diesCentre: 182, toleranciaDies: 10, minOcurrencies: 2, mesos: 6 },
   { key: 'anual', diesCentre: 365, toleranciaDies: 15, minOcurrencies: 2, mesos: 12 },
 ];
-
-function diesEntre(a: string, b: string): number {
-  const da = new Date(`${a}T00:00:00Z`).getTime();
-  const db = new Date(`${b}T00:00:00Z`).getTime();
-  return (db - da) / 86_400_000;
-}
-
-function afegeixDies(iso: string, dies: number): string {
-  const data = new Date(`${iso}T00:00:00Z`);
-  data.setUTCDate(data.getUTCDate() + dies);
-  return data.toISOString().slice(0, 10);
-}
-
-/** Afegeix mesos de calendari preservant el dia del mes ("mateix dia del mes", spec 4.1.3), clampat a l'últim dia del mes objectiu si aquest no existeix (p. ex. 31/01 + 1 mes -> 28 o 29/02). */
-function afegeixMesos(iso: string, mesos: number): string {
-  const [y, m, d] = iso.split('-').map(Number);
-  const totalMesos = y * 12 + (m - 1) + mesos;
-  const anyObjectiu = Math.floor(totalMesos / 12);
-  const mesObjectiu = ((totalMesos % 12) + 12) % 12;
-  const ultimDiaMesObjectiu = new Date(Date.UTC(anyObjectiu, mesObjectiu + 1, 0)).getUTCDate();
-  const diaClampat = Math.min(d, ultimDiaMesObjectiu);
-  return `${anyObjectiu}-${String(mesObjectiu + 1).padStart(2, '0')}-${String(diaClampat).padStart(2, '0')}`;
-}
-
-/** Data real d'avui en ISO (getters locals, no `toISOString()` — mateix criteri que `avui()` a `frontend/src/lib/dates.ts`). Exportada perquè el cridant (db/operations.ts) pugui fer-la servir com a valor per defecte consistent per a tots els càlculs de la mateixa crida. */
-export function isoAvui(): string {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-}
 
 /** Avança `data` un període (mesos de calendari o dies, segons la periodicitat) repetidament fins que ja no quedi en el passat respecte a `avui` — la propera ocurrència prevista d'un patró ha de ser sempre una data futura (o avui), mai una que ja hauria d'haver passat perquè fa temps que no arriben moviments nous d'aquest concepte. */
 function properaOcurrencia(ultimaData: string, periodicitat: DefinicioPeriodicitat, avui: string): string {

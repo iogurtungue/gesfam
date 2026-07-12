@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { isoFromDateCell, parseFlexibleDate, parseNorma43Date } from './dates';
+import { afegeixDies, afegeixMesos, diesEntre, isoFromDateCell, parseFlexibleDate, parseNorma43Date } from './dates';
 
 describe('parseFlexibleDate', () => {
   it('parses dd/mm/yyyy strings', () => {
@@ -39,5 +39,36 @@ describe('parseNorma43Date', () => {
 describe('isoFromDateCell', () => {
   it('formats using local fields, not UTC (bug: shifted every date back a day for timezones ahead of UTC)', () => {
     expect(isoFromDateCell(new Date(2026, 0, 9))).toBe('2026-01-09');
+  });
+});
+
+describe('afegeixDies', () => {
+  it('adds days within the same month', () => {
+    expect(afegeixDies('2026-07-05', 3)).toBe('2026-07-08');
+  });
+
+  it('crosses a month boundary', () => {
+    expect(afegeixDies('2026-07-30', 3)).toBe('2026-08-02');
+  });
+});
+
+describe('afegeixMesos', () => {
+  it('preserves the day of month', () => {
+    expect(afegeixMesos('2026-01-15', 1)).toBe('2026-02-15');
+  });
+
+  it('clamps to the last day of a shorter target month', () => {
+    expect(afegeixMesos('2026-01-31', 1)).toBe('2026-02-28');
+  });
+
+  it('crosses a year boundary', () => {
+    expect(afegeixMesos('2026-12-05', 2)).toBe('2027-02-05');
+  });
+});
+
+describe('diesEntre', () => {
+  it('computes the number of days between two ISO dates', () => {
+    expect(diesEntre('2026-07-05', '2026-07-08')).toBe(3);
+    expect(diesEntre('2026-07-08', '2026-07-05')).toBe(-3);
   });
 });

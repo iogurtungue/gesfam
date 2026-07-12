@@ -247,6 +247,19 @@ router.post('/recurrents/candidats/ignora', (req, res) => {
   }
 });
 
+// --- Previsió (spec 4.3, sub-fase 4.1) ---
+
+router.get('/previsio', (req, res) => {
+  const raw = req.query.compteIds;
+  const compteIds = typeof raw === 'string' ? raw.split(',').filter(Boolean) : [];
+  const horitzoDies = Number(req.query.horitzoDies);
+  if (!Number.isInteger(horitzoDies) || horitzoDies <= 0) {
+    res.status(400).json({ error: 'horitzoDies ha de ser un enter positiu.' });
+    return;
+  }
+  res.json(ops.calculaPrevisio(compteIds, horitzoDies));
+});
+
 // --- Importació de compromisos confirmats (spec 4.2, sub-fase 3.2) ---
 
 router.post('/recurrents/importacio/previsualitza', upload.single('fitxer'), (req, res) => {
