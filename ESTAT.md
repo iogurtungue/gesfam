@@ -131,14 +131,14 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - Verificació manual en navegador (clic a clic) de la migració encara pendent per part de l'usuari — la verificació feta fins ara ha estat via API (curl) i tests automatitzats, no interacció real amb la UI.
 - Cap canvi d'aquesta migració s'ha commitejat ni pujat encara (últim commit `2b68f78`, Fase 2 + correccions).
 
-### 2026-07-12 — Presentació a Moviments: les transferències internes ja no es mostren atenuades; la columna Liquidació s'atenua llevat de les marcades
+### 2026-07-12 — Presentació a Moviments: les transferències internes ja no es mostren atenuades; la columna Liquidació s'atenua llevat de les marcades (i les contrapartides)
 
 L'usuari va demanar dos ajustos visuals a la taula de Moviments, sense canvis de dades ni de lògica:
 
 - Les files marcades com a transferència interna es mostraven amb `opacity: 0.6` (tota la fila en gris). Ara es mostren igual que la resta de moviments — l'usuari ho considerava massa atenuat per a un moviment normal i vàlid, no una anomalia.
-- La columna "Liquidació" es mostra ara atenuada (`opacity: 0.5`) per defecte (tant les cel·les buides com el selector "marca com a liquidació" d'un càrrec de compte corrent, com el text "contrapartida"), **llevat** de les files que ja tenen una liquidació de targeta marcada (`m.esLiquidacioTargetaId`), que es mostren amb opacitat normal per destacar-les visualment de la resta.
+- La columna "Liquidació" es mostra ara atenuada (`opacity: 0.5`) per defecte (cel·les buides i el selector "marca com a liquidació" d'un càrrec de compte corrent), **llevat** de: (a) les files que ja tenen una liquidació de targeta marcada (`m.esLiquidacioTargetaId`), i (b) les contrapartides automàtiques d'una liquidació (`m.movimentOrigenId`, el moviment de targeta generat automàticament) — totes dues es mostren amb opacitat normal, ja que representen una liquidació efectivament marcada (des de banda i banda de la relació origen/contrapartida).
 
-`frontend/src/views/MovimentsList.tsx`: eliminat l'`style` condicional de la `<tr>` basat en `esTransferenciaInterna`; afegit `opacity: 0.5` condicional a la `<td>` de la columna Liquidació (basat en `m.esLiquidacioTargetaId`).
+`frontend/src/views/MovimentsList.tsx`: eliminat l'`style` condicional de la `<tr>` basat en `esTransferenciaInterna`; afegit `opacity: 0.5` condicional a la `<td>` de la columna Liquidació (atenuada llevat que `m.esLiquidacioTargetaId` o `m.movimentOrigenId` sigui present).
 
 ### 2026-07-11 — Bug de zona horària: les dates d'ING sortien un dia enrere (+ migració de l'històric)
 

@@ -543,7 +543,13 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
                     />
                   </td>
                   {targetes.length > 0 && (
-                    <td style={{ ...cellStyle, ...cellLiquidacio, ...(m.esLiquidacioTargetaId ? undefined : { opacity: 0.5 }) }}>
+                    <td
+                      style={{
+                        ...cellStyle,
+                        ...cellLiquidacio,
+                        ...(m.esLiquidacioTargetaId || m.movimentOrigenId ? undefined : { opacity: 0.5 }),
+                      }}
+                    >
                       {cellaLiquidacio(m)}
                     </td>
                   )}
