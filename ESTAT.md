@@ -133,6 +133,13 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-12 — Recurrents: Periodicitat després de Compte, i amplades de columna equivalents entre taules
+
+- `lib/recurrentsTable.ts` (nou): estils de columna compartits (`cellCompte`, `cellPeriodicitat`, `cellData`, `cellConcepte`, `cellImport`, `cellCategoria`, `cellOrigen`, `cellReferencia`, `cellAccions`) amb amplada fixa (`width`/`minWidth`/`maxWidth`), mateix patró `amplaFixa` que ja fa servir `MovimentsList.tsx`. Font única perquè `RecurrentsList` i `RecurrentsCandidatsList` no puguin divergir en amplada columna a columna.
+- Ordre de columnes a totes dues taules: Compte, **Periodicitat**, Data, Data fi, Concepte, Import, Categoria, Origen/Detecció, Referència, accions (abans Periodicitat anava després d'Import).
+
+`tsc -b`/`oxlint`/`vite build` nets.
+
 ### 2026-07-12 — Dates dels recurrents en format dd/mm/aaaa (spec secció 2)
 
 Les dates de text pla a les taules de recurrents es mostraven en format ISO (`2026-08-05`) en lloc de la convenció espanyola (`05/08/2026`) que ja fa servir la resta de l'aplicació (`formatDateEs`, `lib/dates.ts`) — un descuit d'aquesta funcionalitat nova, no un canvi de comportament nou.

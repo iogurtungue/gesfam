@@ -1,0 +1,21 @@
+import type { CSSProperties } from 'react';
+
+// Estils de columna compartits entre RecurrentsList i RecurrentsCandidatsList
+// perquè totes dues taules (recurrents confirmats i candidats detectats)
+// tinguin exactament la mateixa amplada de columna a columna.
+
+export const cellStyle: CSSProperties = { border: '1px solid #ccc', padding: '2px 6px' };
+
+function amplaFixa(px: number): CSSProperties {
+  return { width: px, minWidth: px, maxWidth: px, boxSizing: 'border-box', overflow: 'hidden' };
+}
+
+export const cellCompte: CSSProperties = amplaFixa(110);
+export const cellPeriodicitat: CSSProperties = amplaFixa(100);
+export const cellData: CSSProperties = amplaFixa(95);
+export const cellConcepte: CSSProperties = { whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 220 };
+export const cellImport: CSSProperties = { ...amplaFixa(160), textAlign: 'right' };
+export const cellCategoria: CSSProperties = amplaFixa(120);
+export const cellOrigen: CSSProperties = amplaFixa(110);
+export const cellReferencia: CSSProperties = amplaFixa(90);
+export const cellAccions: CSSProperties = amplaFixa(170);

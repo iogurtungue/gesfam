@@ -3,6 +3,18 @@ import { confirmaCandidatRecurrent, ignoraCandidatRecurrent } from '../api/clien
 import type { CandidatRecurrent, Categoria, Compte, PeriodicitatRecurrent } from '../api/types';
 import { centsToEs } from '../lib/numbers';
 import { PERIODICITAT_LABEL, PERIODICITATS_REPETITIVES } from '../lib/periodicitat';
+import {
+  cellAccions,
+  cellCategoria,
+  cellCompte,
+  cellConcepte,
+  cellData,
+  cellImport,
+  cellOrigen,
+  cellReferencia,
+  cellStyle,
+  cellPeriodicitat,
+} from '../lib/recurrentsTable';
 
 interface Props {
   candidats: CandidatRecurrent[];
@@ -40,7 +52,7 @@ function esborranyDe(c: CandidatRecurrent): Esborrany {
   };
 }
 
-/** Pantalla de revisió dels candidats detectats pel motor de periodicitat (sub-fase 3.4, especificacio.md 4.1.5): confirmar (amb possibles correccions), o ignorar (falsa alarma, no es torna a suggerir). Mateixes columnes que la taula de recurrents confirmats. */
+/** Pantalla de revisió dels candidats detectats pel motor de periodicitat (sub-fase 3.4, especificacio.md 4.1.5): confirmar (amb possibles correccions), o ignorar (falsa alarma, no es torna a suggerir). Mateixes columnes (i amplades) que la taula de recurrents confirmats. */
 export function RecurrentsCandidatsList({ candidats, comptes, categories, onChanged }: Props) {
   const [esborranys, setEsborranys] = useState<Record<string, Esborrany>>({});
   const [ocupat, setOcupat] = useState<string | null>(null);
@@ -118,16 +130,16 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
       <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
         <thead>
           <tr>
-            <th style={cellStyle}>Compte</th>
-            <th style={cellStyle}>Data</th>
-            <th style={cellStyle}>Data fi</th>
-            <th style={cellStyle}>Concepte</th>
-            <th style={{ ...cellStyle, textAlign: 'right' }}>Import</th>
-            <th style={cellStyle}>Periodicitat</th>
-            <th style={cellStyle}>Categoria</th>
-            <th style={cellStyle}>Detecció</th>
-            <th style={cellStyle}>Referència</th>
-            <th style={cellStyle}></th>
+            <th style={{ ...cellStyle, ...cellCompte }}>Compte</th>
+            <th style={{ ...cellStyle, ...cellPeriodicitat }}>Periodicitat</th>
+            <th style={{ ...cellStyle, ...cellData }}>Data</th>
+            <th style={{ ...cellStyle, ...cellData }}>Data fi</th>
+            <th style={{ ...cellStyle, ...cellConcepte }}>Concepte</th>
+            <th style={{ ...cellStyle, ...cellImport }}>Import</th>
+            <th style={{ ...cellStyle, ...cellCategoria }}>Categoria</th>
+            <th style={{ ...cellStyle, ...cellOrigen }}>Detecció</th>
+            <th style={{ ...cellStyle, ...cellReferencia }}>Referència</th>
+            <th style={{ ...cellStyle, ...cellAccions }}></th>
           </tr>
         </thead>
         <tbody>
@@ -136,17 +148,26 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
             const k = clau(c);
             return (
               <tr key={k}>
-                <td style={cellStyle}>{compteAlias.get(c.compteId) ?? c.compteId}</td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellCompte }}>{compteAlias.get(c.compteId) ?? c.compteId}</td>
+                <td style={{ ...cellStyle, ...cellPeriodicitat }}>
+                  <select value={esborrany.periodicitat} onChange={(e) => actualitzaEsborrany(c, { periodicitat: e.target.value as PeriodicitatRecurrent })}>
+                    {PERIODICITATS_REPETITIVES.map((p) => (
+                      <option key={p} value={p}>
+                        {PERIODICITAT_LABEL[p]}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td style={{ ...cellStyle, ...cellData }}>
                   <input type="date" value={esborrany.dataPrevista} onChange={(e) => actualitzaEsborrany(c, { dataPrevista: e.target.value })} />
                 </td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellData }}>
                   <input type="date" value={esborrany.dataFi} onChange={(e) => actualitzaEsborrany(c, { dataFi: e.target.value })} />
                 </td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellConcepte }}>
                   <input value={esborrany.concepte} onChange={(e) => actualitzaEsborrany(c, { concepte: e.target.value })} style={{ width: '100%' }} />
                 </td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellImport }}>
                   <input
                     type="number"
                     step="0.01"
@@ -163,16 +184,7 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
                     aprox.
                   </label>
                 </td>
-                <td style={cellStyle}>
-                  <select value={esborrany.periodicitat} onChange={(e) => actualitzaEsborrany(c, { periodicitat: e.target.value as PeriodicitatRecurrent })}>
-                    {PERIODICITATS_REPETITIVES.map((p) => (
-                      <option key={p} value={p}>
-                        {PERIODICITAT_LABEL[p]}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellCategoria }}>
                   <select value={esborrany.categoriaId} onChange={(e) => actualitzaEsborrany(c, { categoriaId: e.target.value })}>
                     <option value="">--</option>
                     {categories.map((cat) => (
@@ -183,19 +195,19 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
                   </select>
                 </td>
                 <td
-                  style={cellStyle}
+                  style={{ ...cellStyle, ...cellOrigen }}
                   title={`${c.ocurrencies} ocurrències detectades, rang ${centsToEs(c.importMinCents, false)}..${centsToEs(c.importMaxCents, false)}, confiança ${c.confianca}%`}
                 >
                   {c.ocurrencies} oc., {c.confianca}%
                 </td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellReferencia }}>
                   <input
                     value={esborrany.referencia}
                     onChange={(e) => actualitzaEsborrany(c, { referencia: e.target.value })}
                     style={{ width: 80 }}
                   />
                 </td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellAccions }}>
                   <button onClick={() => handleConfirma(c)} disabled={ocupat === k}>
                     Confirmar
                   </button>{' '}
@@ -211,5 +223,3 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
     </section>
   );
 }
-
-const cellStyle: React.CSSProperties = { border: '1px solid #ccc', padding: '2px 6px' };

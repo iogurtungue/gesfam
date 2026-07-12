@@ -4,6 +4,18 @@ import type { Categoria, Compte, PeriodicitatRecurrent, Recurrent } from '../api
 import { formatDateEs } from '../lib/dates';
 import { centsToEs } from '../lib/numbers';
 import { PERIODICITAT_LABEL, TOTES_LES_PERIODICITATS } from '../lib/periodicitat';
+import {
+  cellAccions,
+  cellCategoria,
+  cellCompte,
+  cellConcepte,
+  cellData,
+  cellImport,
+  cellOrigen,
+  cellReferencia,
+  cellStyle,
+  cellPeriodicitat,
+} from '../lib/recurrentsTable';
 
 interface Props {
   recurrents: Recurrent[];
@@ -105,33 +117,45 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
       <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
         <thead>
           <tr>
-            <th style={cellStyle}>Compte</th>
-            <th style={cellStyle}>Data</th>
-            <th style={cellStyle}>Data fi</th>
-            <th style={cellStyle}>Concepte</th>
-            <th style={{ ...cellStyle, textAlign: 'right' }}>Import</th>
-            <th style={cellStyle}>Periodicitat</th>
-            <th style={cellStyle}>Categoria</th>
-            <th style={cellStyle}>Origen</th>
-            <th style={cellStyle}>Referència</th>
-            <th style={cellStyle}></th>
+            <th style={{ ...cellStyle, ...cellCompte }}>Compte</th>
+            <th style={{ ...cellStyle, ...cellPeriodicitat }}>Periodicitat</th>
+            <th style={{ ...cellStyle, ...cellData }}>Data</th>
+            <th style={{ ...cellStyle, ...cellData }}>Data fi</th>
+            <th style={{ ...cellStyle, ...cellConcepte }}>Concepte</th>
+            <th style={{ ...cellStyle, ...cellImport }}>Import</th>
+            <th style={{ ...cellStyle, ...cellCategoria }}>Categoria</th>
+            <th style={{ ...cellStyle, ...cellOrigen }}>Origen</th>
+            <th style={{ ...cellStyle, ...cellReferencia }}>Referència</th>
+            <th style={{ ...cellStyle, ...cellAccions }}></th>
           </tr>
         </thead>
         <tbody>
           {ordenats.map((r) =>
             editant === r.id && esborrany ? (
               <tr key={r.id}>
-                <td style={cellStyle}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellCompte }}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
+                <td style={{ ...cellStyle, ...cellPeriodicitat }}>
+                  <select
+                    value={esborrany.periodicitat}
+                    onChange={(e) => setEsborrany({ ...esborrany, periodicitat: e.target.value as PeriodicitatRecurrent })}
+                  >
+                    {TOTES_LES_PERIODICITATS.map((p) => (
+                      <option key={p} value={p}>
+                        {PERIODICITAT_LABEL[p]}
+                      </option>
+                    ))}
+                  </select>
+                </td>
+                <td style={{ ...cellStyle, ...cellData }}>
                   <input type="date" value={esborrany.dataPrevista} onChange={(e) => setEsborrany({ ...esborrany, dataPrevista: e.target.value })} />
                 </td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellData }}>
                   <input type="date" value={esborrany.dataFi} onChange={(e) => setEsborrany({ ...esborrany, dataFi: e.target.value })} />
                 </td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellConcepte }}>
                   <input value={esborrany.concepte} onChange={(e) => setEsborrany({ ...esborrany, concepte: e.target.value })} style={{ width: '100%' }} />
                 </td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellImport }}>
                   <input
                     type="number"
                     step="0.01"
@@ -148,19 +172,7 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
                     aprox.
                   </label>
                 </td>
-                <td style={cellStyle}>
-                  <select
-                    value={esborrany.periodicitat}
-                    onChange={(e) => setEsborrany({ ...esborrany, periodicitat: e.target.value as PeriodicitatRecurrent })}
-                  >
-                    {TOTES_LES_PERIODICITATS.map((p) => (
-                      <option key={p} value={p}>
-                        {PERIODICITAT_LABEL[p]}
-                      </option>
-                    ))}
-                  </select>
-                </td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellCategoria }}>
                   <select value={esborrany.categoriaId} onChange={(e) => setEsborrany({ ...esborrany, categoriaId: e.target.value })}>
                     <option value="">--</option>
                     {categories.map((c) => (
@@ -170,11 +182,11 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
                     ))}
                   </select>
                 </td>
-                <td style={cellStyle}>{r.origen}</td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellOrigen }}>{r.origen}</td>
+                <td style={{ ...cellStyle, ...cellReferencia }}>
                   <input value={esborrany.referencia} onChange={(e) => setEsborrany({ ...esborrany, referencia: e.target.value })} style={{ width: 80 }} />
                 </td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellAccions }}>
                   <button onClick={() => handleDesa(r.id)} disabled={desant}>
                     Desa
                   </button>{' '}
@@ -185,19 +197,19 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
               </tr>
             ) : (
               <tr key={r.id}>
-                <td style={cellStyle}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
-                <td style={cellStyle}>{formatDateEs(r.dataPrevista)}</td>
-                <td style={cellStyle}>{r.dataFi ? formatDateEs(r.dataFi) : '—'}</td>
-                <td style={cellStyle}>{r.concepte}</td>
-                <td style={{ ...cellStyle, textAlign: 'right' }} title={r.importAproximat ? 'Import aproximat (estimació)' : 'Import cert'}>
+                <td style={{ ...cellStyle, ...cellCompte }}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
+                <td style={{ ...cellStyle, ...cellPeriodicitat }}>{PERIODICITAT_LABEL[r.periodicitat]}</td>
+                <td style={{ ...cellStyle, ...cellData }}>{formatDateEs(r.dataPrevista)}</td>
+                <td style={{ ...cellStyle, ...cellData }}>{r.dataFi ? formatDateEs(r.dataFi) : '—'}</td>
+                <td style={{ ...cellStyle, ...cellConcepte }}>{r.concepte}</td>
+                <td style={{ ...cellStyle, ...cellImport }} title={r.importAproximat ? 'Import aproximat (estimació)' : 'Import cert'}>
                   {r.importAproximat && '≈ '}
                   {centsToEs(r.importCents, false)}
                 </td>
-                <td style={cellStyle}>{PERIODICITAT_LABEL[r.periodicitat]}</td>
-                <td style={cellStyle}>{r.categoriaId ? (categoriaNom.get(r.categoriaId) ?? '—') : '—'}</td>
-                <td style={cellStyle}>{r.origen}</td>
-                <td style={cellStyle}>{r.referencia ?? '—'}</td>
-                <td style={cellStyle}>
+                <td style={{ ...cellStyle, ...cellCategoria }}>{r.categoriaId ? (categoriaNom.get(r.categoriaId) ?? '—') : '—'}</td>
+                <td style={{ ...cellStyle, ...cellOrigen }}>{r.origen}</td>
+                <td style={{ ...cellStyle, ...cellReferencia }}>{r.referencia ?? '—'}</td>
+                <td style={{ ...cellStyle, ...cellAccions }}>
                   <button onClick={() => obreEdicio(r)} title="Edita">
                     Edita
                   </button>{' '}
@@ -213,5 +225,3 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
     </section>
   );
 }
-
-const cellStyle: React.CSSProperties = { border: '1px solid #ccc', padding: '2px 6px' };
