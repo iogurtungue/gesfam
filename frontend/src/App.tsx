@@ -48,10 +48,12 @@ function App() {
 
   const pestanyaActiva = PESTANYES.find((p) => p.id === pestanya)!;
 
-  // La taula de Moviments té una columna Import/Saldo per compte, així que
-  // necessita tot l'ample de pantalla disponible en lloc del contenidor
-  // centrat i limitat a 1000px que fan servir la resta de pestanyes.
-  const amplariMaxima = pestanya === 'moviments' ? 'none' : 1000;
+  // La taula de Moviments té una columna Import/Saldo per compte, i les
+  // taules de Recurrents tenen força columnes (data, data fi, concepte,
+  // import, compte, periodicitat, categoria, origen, referència...), així
+  // que totes dues necessiten tot l'ample de pantalla disponible en lloc del
+  // contenidor centrat i limitat a 1000px que fan servir la resta de pestanyes.
+  const amplariMaxima = pestanya === 'moviments' || pestanya === 'recurrents' ? 'none' : 1000;
 
   return (
     <div style={{ maxWidth: amplariMaxima, margin: '0 auto', padding: 16, fontFamily: 'sans-serif' }}>

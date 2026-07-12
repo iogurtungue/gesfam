@@ -96,10 +96,14 @@ export interface Recurrent {
   concepte: string;
   concepteNormalitzat: string;
   periodicitat: PeriodicitatRecurrent;
-  /** Cèntims, amb signe: negatiu = despesa, positiu = ingrés. Import cert per a manual/importat; estimat (mediana) per a detectat. */
+  /** Cèntims, amb signe: negatiu = despesa, positiu = ingrés. */
   importCents: number;
+  /** Si `importCents` és una estimació (p. ex. mediana d'un patró detectat amb variació entre ocurrències) en lloc d'un import cert conegut (factura, ingrés fix). Per defecte `false`; l'usuari el pot marcar/desmarcar en confirmar o corregir un recurrent. */
+  importAproximat: boolean;
   /** ISO date: per a `unica`, la data de venciment; per a periodicitats repetitives, la propera ocurrència prevista (les següents es calculen a partir d'aquesta, Fase 4). */
   dataPrevista: string;
+  /** ISO date opcional: última ocurrència esperada (p. ex. un préstec amb data de fi coneguda, o una subscripció que se sap que s'acabarà). Sense data de fi, el recurrent es considera indefinit. */
+  dataFi?: string;
   /** Referència a Categoria.id */
   categoriaId?: string;
   /** Núm. de factura o similar, només informatiu. */

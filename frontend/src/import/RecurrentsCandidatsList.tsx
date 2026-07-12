@@ -15,7 +15,9 @@ interface Esborrany {
   concepte: string;
   periodicitat: PeriodicitatRecurrent;
   importEuros: string;
+  importAproximat: boolean;
   dataPrevista: string;
+  dataFi: string;
   categoriaId: string;
 }
 
@@ -28,7 +30,10 @@ function esborranyDe(c: CandidatRecurrent): Esborrany {
     concepte: c.concepte,
     periodicitat: c.periodicitat,
     importEuros: (c.importEstimatCents / 100).toString(),
+    // Rang detectat diferent -> per defecte marcat com a aproximat; import constant a totes les ocurrències -> cert.
+    importAproximat: c.importMinCents !== c.importMaxCents,
     dataPrevista: c.dataPrevista,
+    dataFi: '',
     categoriaId: '',
   };
 }
@@ -58,7 +63,9 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
         concepte: esborrany.concepte,
         periodicitat: esborrany.periodicitat,
         importCents,
+        importAproximat: esborrany.importAproximat,
         dataPrevista: esborrany.dataPrevista,
+        dataFi: esborrany.dataFi || undefined,
         categoriaId: esborrany.categoriaId || undefined,
       });
       onChanged();
@@ -87,7 +94,7 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
     return (
       <section style={{ marginTop: 24 }}>
         <h2>Candidats detectats</h2>
-        <p style={{ fontSize: '0.9em', color: '#555' }}>Cap patró nou detectat sobre l'històric de moviments.</p>
+        <p style={{ fontSize: 12, color: '#555' }}>Cap patró nou detectat sobre l'històric de moviments.</p>
       </section>
     );
   }
@@ -95,7 +102,7 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
   return (
     <section style={{ marginTop: 24 }}>
       <h2>Candidats detectats</h2>
-      <p style={{ fontSize: '0.9em', color: '#555' }}>
+      <p style={{ fontSize: 12, color: '#555' }}>
         Patrons detectats automàticament sobre l'històric de moviments de compte corrent. Corregeix-ne els valors si cal abans de confirmar,
         o ignora'ls si és una falsa alarma (no es tornaran a suggerir).
       </p>
@@ -103,8 +110,8 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
         const esborrany = esborranyPer(c);
         const k = clau(c);
         return (
-          <div key={k} style={{ border: '1px solid #999', padding: 12, marginBottom: 12 }}>
-            <div style={{ fontSize: '0.9em', color: '#555', marginBottom: 6 }}>
+          <div key={k} style={{ border: '1px solid #999', padding: 12, marginBottom: 12, fontSize: 12 }}>
+            <div style={{ color: '#555', marginBottom: 6 }}>
               {compteAlias.get(c.compteId) ?? c.compteId} — {c.ocurrencies} ocurrències, rang {centsToEs(c.importMinCents, false)}..
               {centsToEs(c.importMaxCents, false)}, confiança {c.confianca}%
             </div>
@@ -128,12 +135,20 @@ export function RecurrentsCandidatsList({ candidats, comptes, categories, onChan
                 step="0.01"
                 value={esborrany.importEuros}
                 onChange={(e) => actualitzaEsborrany(c, { importEuros: e.target.value })}
-                style={{ width: 80, textAlign: 'right' }}
+                style={{ width: 70, textAlign: 'right' }}
               />
+            </label>{' '}
+            <label title="L'import és una estimació, no un valor cert">
+              <input type="checkbox" checked={esborrany.importAproximat} onChange={(e) => actualitzaEsborrany(c, { importAproximat: e.target.checked })} />{' '}
+              aprox.
             </label>{' '}
             <label>
               Propera data:{' '}
               <input type="date" value={esborrany.dataPrevista} onChange={(e) => actualitzaEsborrany(c, { dataPrevista: e.target.value })} />
+            </label>{' '}
+            <label title="Última ocurrència esperada, opcional">
+              Data de finalització:{' '}
+              <input type="date" value={esborrany.dataFi} onChange={(e) => actualitzaEsborrany(c, { dataFi: e.target.value })} />
             </label>{' '}
             <label>
               Categoria:{' '}

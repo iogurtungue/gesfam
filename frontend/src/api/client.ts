@@ -200,7 +200,16 @@ export function creaRecurrentManual(data: DadesRecurrent): Promise<Recurrent> {
 
 export function actualitzaRecurrent(
   id: string,
-  data: Partial<{ concepte: string; periodicitat: PeriodicitatRecurrent; importCents: number; dataPrevista: string; categoriaId: string | null; referencia: string | null }>,
+  data: Partial<{
+    concepte: string;
+    periodicitat: PeriodicitatRecurrent;
+    importCents: number;
+    importAproximat: boolean;
+    dataPrevista: string;
+    dataFi: string | null;
+    categoriaId: string | null;
+    referencia: string | null;
+  }>,
 ): Promise<void> {
   return req(`/recurrents/${id}`, { method: 'PATCH', ...json(data) });
 }

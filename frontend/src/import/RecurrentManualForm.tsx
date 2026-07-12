@@ -15,7 +15,9 @@ export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
   const [concepte, setConcepte] = useState('');
   const [periodicitat, setPeriodicitat] = useState<PeriodicitatRecurrent>('mensual');
   const [importEuros, setImportEuros] = useState('');
+  const [importAproximat, setImportAproximat] = useState(false);
   const [dataPrevista, setDataPrevista] = useState('');
+  const [dataFi, setDataFi] = useState('');
   const [categoriaId, setCategoriaId] = useState('');
   const [referencia, setReferencia] = useState('');
   const [busy, setBusy] = useState(false);
@@ -35,13 +37,17 @@ export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
         concepte: concepte.trim(),
         periodicitat,
         importCents,
+        importAproximat,
         dataPrevista,
+        dataFi: dataFi || undefined,
         categoriaId: categoriaId || undefined,
         referencia: referencia.trim() || undefined,
       });
       setConcepte('');
       setImportEuros('');
+      setImportAproximat(false);
       setDataPrevista('');
+      setDataFi('');
       setReferencia('');
       onChanged();
     } catch (err) {
@@ -54,8 +60,10 @@ export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
   return (
     <section style={{ marginTop: 24 }}>
       <h2>Afegir un recurrent manualment</h2>
-      <p style={{ fontSize: '0.9em', color: '#555' }}>Per a un recurrent que el motor de detecció encara no ha vist (p. ex. un rebut anual amb una sola ocurrència a l'històric).</p>
-      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+      <p style={{ fontSize: 12, color: '#555' }}>
+        Per a un recurrent que el motor de detecció encara no ha vist (p. ex. un rebut anual amb una sola ocurrència a l'històric).
+      </p>
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center', fontSize: 12 }}>
         <label>
           Compte:{' '}
           <select value={compteId} onChange={(e) => setCompteId(e.target.value)}>
@@ -82,8 +90,14 @@ export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
         <label>
           Import: <input type="number" step="0.01" value={importEuros} onChange={(e) => setImportEuros(e.target.value)} style={{ width: 80 }} />
         </label>
+        <label title="L'import és una estimació, no un valor cert">
+          <input type="checkbox" checked={importAproximat} onChange={(e) => setImportAproximat(e.target.checked)} /> aproximat
+        </label>
         <label>
           Data: <input type="date" value={dataPrevista} onChange={(e) => setDataPrevista(e.target.value)} />
+        </label>
+        <label title="Última ocurrència esperada, opcional">
+          Data de finalització: <input type="date" value={dataFi} onChange={(e) => setDataFi(e.target.value)} />
         </label>
         <label>
           Categoria:{' '}

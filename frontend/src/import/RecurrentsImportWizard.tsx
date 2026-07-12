@@ -52,7 +52,7 @@ export function RecurrentsImportWizard({ comptes, onChanged }: Props) {
   return (
     <section style={{ marginTop: 24 }}>
       <h2>Importar compromisos confirmats</h2>
-      <p style={{ fontSize: '0.9em', color: '#555' }}>
+      <p style={{ fontSize: 12, color: '#555' }}>
         Factures o altres compromisos amb import i data de venciment ja coneguts (no estimats). Excel amb columnes: Data de venciment,
         Concepte, Import, i opcionalment Categoria i Referència.
       </p>
@@ -78,7 +78,7 @@ export function RecurrentsImportWizard({ comptes, onChanged }: Props) {
           </p>
           {recurrents.length > 0 && (
             <>
-              <table style={{ borderCollapse: 'collapse', fontSize: '0.9em' }}>
+              <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
                 <thead>
                   <tr>
                     <th style={cellStyle}>Venciment</th>

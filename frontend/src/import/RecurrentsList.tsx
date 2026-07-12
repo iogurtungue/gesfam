@@ -15,7 +15,9 @@ interface EsborranyEdicio {
   concepte: string;
   periodicitat: PeriodicitatRecurrent;
   importEuros: string;
+  importAproximat: boolean;
   dataPrevista: string;
+  dataFi: string;
   categoriaId: string;
   referencia: string;
 }
@@ -25,7 +27,9 @@ function esborranyDe(r: Recurrent): EsborranyEdicio {
     concepte: r.concepte,
     periodicitat: r.periodicitat,
     importEuros: (r.importCents / 100).toString(),
+    importAproximat: r.importAproximat,
     dataPrevista: r.dataPrevista,
+    dataFi: r.dataFi ?? '',
     categoriaId: r.categoriaId ?? '',
     referencia: r.referencia ?? '',
   };
@@ -66,7 +70,9 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
         concepte: esborrany.concepte,
         periodicitat: esborrany.periodicitat,
         importCents,
+        importAproximat: esborrany.importAproximat,
         dataPrevista: esborrany.dataPrevista,
+        dataFi: esborrany.dataFi || null,
         categoriaId: esborrany.categoriaId || null,
         referencia: esborrany.referencia || null,
       });
@@ -81,7 +87,7 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
     return (
       <section style={{ marginTop: 24 }}>
         <h2>Recurrents confirmats</h2>
-        <p style={{ fontSize: '0.9em', color: '#555' }}>Encara no hi ha cap recurrent confirmat.</p>
+        <p style={{ fontSize: 12, color: '#555' }}>Encara no hi ha cap recurrent confirmat.</p>
       </section>
     );
   }
@@ -91,10 +97,11 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
   return (
     <section style={{ marginTop: 24 }}>
       <h2>Recurrents confirmats</h2>
-      <table style={{ borderCollapse: 'collapse', fontSize: '0.9em' }}>
+      <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
         <thead>
           <tr>
             <th style={cellStyle}>Data</th>
+            <th style={cellStyle}>Data fi</th>
             <th style={cellStyle}>Concepte</th>
             <th style={{ ...cellStyle, textAlign: 'right' }}>Import</th>
             <th style={cellStyle}>Compte</th>
@@ -113,6 +120,9 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
                   <input type="date" value={esborrany.dataPrevista} onChange={(e) => setEsborrany({ ...esborrany, dataPrevista: e.target.value })} />
                 </td>
                 <td style={cellStyle}>
+                  <input type="date" value={esborrany.dataFi} onChange={(e) => setEsborrany({ ...esborrany, dataFi: e.target.value })} />
+                </td>
+                <td style={cellStyle}>
                   <input value={esborrany.concepte} onChange={(e) => setEsborrany({ ...esborrany, concepte: e.target.value })} style={{ width: '100%' }} />
                 </td>
                 <td style={cellStyle}>
@@ -121,8 +131,16 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
                     step="0.01"
                     value={esborrany.importEuros}
                     onChange={(e) => setEsborrany({ ...esborrany, importEuros: e.target.value })}
-                    style={{ width: 80, textAlign: 'right' }}
+                    style={{ width: 70, textAlign: 'right' }}
                   />
+                  <label title="L'import és una estimació, no un valor cert">
+                    <input
+                      type="checkbox"
+                      checked={esborrany.importAproximat}
+                      onChange={(e) => setEsborrany({ ...esborrany, importAproximat: e.target.checked })}
+                    />{' '}
+                    aprox.
+                  </label>
                 </td>
                 <td style={cellStyle}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
                 <td style={cellStyle}>
@@ -163,8 +181,12 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
             ) : (
               <tr key={r.id}>
                 <td style={cellStyle}>{r.dataPrevista}</td>
+                <td style={cellStyle}>{r.dataFi ?? '—'}</td>
                 <td style={cellStyle}>{r.concepte}</td>
-                <td style={{ ...cellStyle, textAlign: 'right' }}>{centsToEs(r.importCents, false)}</td>
+                <td style={{ ...cellStyle, textAlign: 'right' }} title={r.importAproximat ? 'Import aproximat (estimació)' : 'Import cert'}>
+                  {r.importAproximat && '≈ '}
+                  {centsToEs(r.importCents, false)}
+                </td>
                 <td style={cellStyle}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
                 <td style={cellStyle}>{PERIODICITAT_LABEL[r.periodicitat]}</td>
                 <td style={cellStyle}>{r.categoriaId ? (categoriaNom.get(r.categoriaId) ?? '—') : '—'}</td>

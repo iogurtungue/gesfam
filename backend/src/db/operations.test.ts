@@ -626,7 +626,9 @@ describe('recurrents (sub-fase 3.1, especificacio.md 4.1/4.2)', () => {
       concepte: 'Assegurança',
       periodicitat: 'anual',
       importCents: -30000,
+      importAproximat: true,
       dataPrevista: '2027-03-01',
+      dataFi: '2028-01-01',
     });
 
     const backup = exportaCopiaSeguretat();
@@ -680,11 +682,13 @@ describe('importaRecurrents (sub-fase 3.2, especificacio.md 4.2)', () => {
       compteId: compte.id,
       concepte: 'Proveïdor XYZ SL',
       importCents: -125000,
+      importAproximat: false,
       dataPrevista: '2026-09-15',
       periodicitat: 'unica',
       origen: 'importat',
       estat: 'confirmat',
     });
+    expect(recurrent.dataFi).toBeUndefined();
   });
 
   it('resolves categoriaNom to an existing categoria by case-insensitive name match', () => {
@@ -947,5 +951,35 @@ describe('confirmaCandidatRecurrent / ignoraCandidatRecurrent / actualitzaRecurr
     const recurrent = creaRecurrentManual(dades(compte.id));
 
     expect(() => actualitzaRecurrent(recurrent.id, { categoriaId: 'no-existeix' })).toThrow();
+  });
+
+  it('defaults importAproximat to false and dataFi to unset when not provided', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+
+    const recurrent = creaRecurrentManual(dades(compte.id));
+
+    expect(recurrent.importAproximat).toBe(false);
+    expect(recurrent.dataFi).toBeUndefined();
+  });
+
+  it('creaRecurrentManual accepts importAproximat and dataFi', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+
+    const recurrent = creaRecurrentManual(dades(compte.id, { importAproximat: true, dataFi: '2027-12-31' }));
+
+    expect(recurrent.importAproximat).toBe(true);
+    expect(recurrent.dataFi).toBe('2027-12-31');
+    expect(listRecurrents()[0]).toMatchObject({ importAproximat: true, dataFi: '2027-12-31' });
+  });
+
+  it('actualitzaRecurrent updates importAproximat and dataFi, and can clear dataFi with null', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const recurrent = creaRecurrentManual(dades(compte.id));
+
+    actualitzaRecurrent(recurrent.id, { importAproximat: true, dataFi: '2027-06-30' });
+    expect(listRecurrents()[0]).toMatchObject({ importAproximat: true, dataFi: '2027-06-30' });
+
+    actualitzaRecurrent(recurrent.id, { dataFi: null });
+    expect(listRecurrents()[0].dataFi).toBeUndefined();
   });
 });

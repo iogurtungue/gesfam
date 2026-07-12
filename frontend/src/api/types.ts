@@ -161,7 +161,11 @@ export interface Recurrent {
   concepteNormalitzat: string;
   periodicitat: PeriodicitatRecurrent;
   importCents: number;
+  /** Si l'import és una estimació (patró detectat amb variació) en lloc d'un import cert conegut. */
+  importAproximat: boolean;
   dataPrevista: string;
+  /** Última ocurrència esperada, opcional (p. ex. un préstec o una subscripció amb data de fi coneguda). */
+  dataFi?: string;
   categoriaId?: string;
   referencia?: string;
   origen: OrigenRecurrent;
@@ -193,7 +197,9 @@ export interface DadesRecurrent {
   concepte: string;
   periodicitat: PeriodicitatRecurrent;
   importCents: number;
+  importAproximat?: boolean;
   dataPrevista: string;
+  dataFi?: string;
   categoriaId?: string;
   referencia?: string;
 }

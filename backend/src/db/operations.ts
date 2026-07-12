@@ -754,7 +754,9 @@ interface RecurrentRow {
   concepte_normalitzat: string;
   periodicitat: string;
   import_cents: number;
+  import_aproximat: number;
   data_prevista: string;
+  data_fi: string | null;
   categoria_id: string | null;
   referencia: string | null;
   origen: string;
@@ -769,7 +771,9 @@ function rowToRecurrent(row: RecurrentRow): Recurrent {
     concepteNormalitzat: row.concepte_normalitzat,
     periodicitat: row.periodicitat as PeriodicitatRecurrent,
     importCents: row.import_cents,
+    importAproximat: row.import_aproximat === 1,
     dataPrevista: row.data_prevista,
+    dataFi: row.data_fi ?? undefined,
     categoriaId: row.categoria_id ?? undefined,
     referencia: row.referencia ?? undefined,
     origen: row.origen as OrigenRecurrent,
@@ -790,7 +794,11 @@ export interface DadesRecurrent {
   concepte: string;
   periodicitat: PeriodicitatRecurrent;
   importCents: number;
+  /** Si l'import és una estimació (patró detectat amb variació) en lloc d'un import cert. Per defecte `false`. */
+  importAproximat?: boolean;
   dataPrevista: string;
+  /** Última ocurrència esperada, opcional (p. ex. un préstec o una subscripció amb data de fi coneguda). */
+  dataFi?: string;
   categoriaId?: string;
   referencia?: string;
 }
@@ -809,7 +817,9 @@ function inserirRecurrent(data: DadesRecurrent, origen: OrigenRecurrent, estat: 
     concepteNormalitzat: normalizeConceptForDedup(data.concepte),
     periodicitat: data.periodicitat,
     importCents: data.importCents,
+    importAproximat: data.importAproximat ?? false,
     dataPrevista: data.dataPrevista,
+    dataFi: data.dataFi,
     categoriaId: data.categoriaId,
     referencia: data.referencia,
     origen,
@@ -818,8 +828,8 @@ function inserirRecurrent(data: DadesRecurrent, origen: OrigenRecurrent, estat: 
   getDb()
     .prepare(
       `INSERT INTO recurrents
-        (id, compte_id, concepte, concepte_normalitzat, periodicitat, import_cents, data_prevista, categoria_id, referencia, origen, estat)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, compte_id, concepte, concepte_normalitzat, periodicitat, import_cents, import_aproximat, data_prevista, data_fi, categoria_id, referencia, origen, estat)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       recurrent.id,
@@ -828,7 +838,9 @@ function inserirRecurrent(data: DadesRecurrent, origen: OrigenRecurrent, estat: 
       recurrent.concepteNormalitzat,
       recurrent.periodicitat,
       recurrent.importCents,
+      recurrent.importAproximat ? 1 : 0,
       recurrent.dataPrevista,
+      recurrent.dataFi ?? null,
       recurrent.categoriaId ?? null,
       recurrent.referencia ?? null,
       recurrent.origen,
@@ -855,7 +867,16 @@ export function ignoraCandidatRecurrent(data: DadesRecurrent): Recurrent {
 /** Corregeix un recurrent ja existent (manual, importat o confirmat des d'un candidat) — spec 4.1.5 "corregir". Recalcula concepteNormalitzat si el concepte canvia. */
 export function actualitzaRecurrent(
   id: string,
-  data: Partial<{ concepte: string; periodicitat: PeriodicitatRecurrent; importCents: number; dataPrevista: string; categoriaId: string | null; referencia: string | null }>,
+  data: Partial<{
+    concepte: string;
+    periodicitat: PeriodicitatRecurrent;
+    importCents: number;
+    importAproximat: boolean;
+    dataPrevista: string;
+    dataFi: string | null;
+    categoriaId: string | null;
+    referencia: string | null;
+  }>,
 ): void {
   if (!getDb().prepare('SELECT 1 FROM recurrents WHERE id = ?').get(id)) {
     throw new Error('El recurrent indicat no existeix.');
@@ -878,9 +899,17 @@ export function actualitzaRecurrent(
     assignacions.push('import_cents = ?');
     valors.push(data.importCents);
   }
+  if (data.importAproximat !== undefined) {
+    assignacions.push('import_aproximat = ?');
+    valors.push(data.importAproximat ? 1 : 0);
+  }
   if (data.dataPrevista !== undefined) {
     assignacions.push('data_prevista = ?');
     valors.push(data.dataPrevista);
+  }
+  if (data.dataFi !== undefined) {
+    assignacions.push('data_fi = ?');
+    valors.push(data.dataFi);
   }
   if (data.categoriaId !== undefined) {
     assignacions.push('categoria_id = ?');
@@ -1089,10 +1118,10 @@ export function importaCopiaSeguretat(backup: Backup): void {
 
     const insertRecurrent = db.prepare(
       `INSERT INTO recurrents
-        (id, compte_id, concepte, concepte_normalitzat, periodicitat, import_cents, data_prevista, categoria_id, referencia, origen, estat)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, compte_id, concepte, concepte_normalitzat, periodicitat, import_cents, import_aproximat, data_prevista, data_fi, categoria_id, referencia, origen, estat)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
-    // `recurrents` no existia en còpies de seguretat anteriors a aquesta funcionalitat.
+    // `recurrents` no existia en còpies de seguretat anteriors a aquesta funcionalitat; `importAproximat`/`dataFi` tampoc.
     for (const r of backup.recurrents ?? []) {
       insertRecurrent.run(
         r.id,
@@ -1101,7 +1130,9 @@ export function importaCopiaSeguretat(backup: Backup): void {
         r.concepteNormalitzat,
         r.periodicitat,
         r.importCents,
+        r.importAproximat ? 1 : 0,
         r.dataPrevista,
+        r.dataFi ?? null,
         r.categoriaId ?? null,
         r.referencia ?? null,
         r.origen,
