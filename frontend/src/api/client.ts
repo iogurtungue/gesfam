@@ -3,7 +3,6 @@ import type {
   Backup,
   BackupFileInfo,
   BankId,
-  CandidatRecurrent,
   Categoria,
   ColumnMapping,
   CommitImportResult,
@@ -227,20 +226,6 @@ export async function previsualitzaImportacioRecurrents(file: File): Promise<Pre
 
 export function confirmaImportacioRecurrents(compteId: string, recurrents: ParsedRecurrentImport[]): Promise<ImportaRecurrentsResult> {
   return req('/recurrents/importacio/confirma', { method: 'POST', ...json({ compteId, recurrents }) });
-}
-
-// --- Motor de detecció de periodicitat (sub-fase 3.3) i revisió (sub-fase 3.4) ---
-
-export function detectaCandidatsRecurrents(): Promise<CandidatRecurrent[]> {
-  return req('/recurrents/candidats');
-}
-
-export function confirmaCandidatRecurrent(data: DadesRecurrent): Promise<Recurrent> {
-  return req('/recurrents/candidats/confirma', { method: 'POST', ...json(data) });
-}
-
-export function ignoraCandidatRecurrent(data: DadesRecurrent): Promise<Recurrent> {
-  return req('/recurrents/candidats/ignora', { method: 'POST', ...json(data) });
 }
 
 // --- Previsió (especificacio.md 4.3, sub-fase 4.1) ---

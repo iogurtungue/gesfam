@@ -225,28 +225,6 @@ router.delete('/recurrents/:id', (req, res) => {
   }
 });
 
-// --- Motor de detecció de periodicitat (spec 4.1, sub-fase 3.3) i revisió (sub-fase 3.4) ---
-
-router.get('/recurrents/candidats', (_req, res) => {
-  res.json(ops.detectaCandidatsRecurrents());
-});
-
-router.post('/recurrents/candidats/confirma', (req, res) => {
-  try {
-    res.status(201).json(ops.confirmaCandidatRecurrent(req.body as ops.DadesRecurrent));
-  } catch (err) {
-    res.status(400).json({ error: (err as Error).message });
-  }
-});
-
-router.post('/recurrents/candidats/ignora', (req, res) => {
-  try {
-    res.status(201).json(ops.ignoraCandidatRecurrent(req.body as ops.DadesRecurrent));
-  } catch (err) {
-    res.status(400).json({ error: (err as Error).message });
-  }
-});
-
 // --- Previsió (spec 4.3, sub-fase 4.1) ---
 
 router.get('/previsio', (req, res) => {

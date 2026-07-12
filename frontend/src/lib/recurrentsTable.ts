@@ -1,9 +1,8 @@
 import type { CSSProperties } from 'react';
 
-// Estils de columna compartits entre RecurrentsList, RecurrentsCandidatsList
-// i RecurrentManualForm perquè les tres seccions (recurrents confirmats,
-// candidats detectats, afegir-ne un de manual) tinguin exactament la mateixa
-// amplada de columna a columna.
+// Estils de columna compartits entre RecurrentsList i RecurrentManualForm
+// perquè les dues seccions (recurrents confirmats, afegir-ne un de manual)
+// tinguin exactament la mateixa amplada de columna a columna.
 
 export const cellStyle: CSSProperties = { border: '1px solid #ccc', padding: '2px 6px' };
 

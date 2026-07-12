@@ -37,7 +37,6 @@ export interface PuntSerieDiaria {
 
 /** "Pocs dies" (especificacio.md 4.2, sub-fase 3.6): finestra al voltant de la data prevista dins la qual un moviment real ja importat es considera la liquidació d'aquell recurrent. */
 const FINESTRA_CONCILIACIO_DIES = 3;
-/** Mateix criteri de tolerància d'import que la detecció de patrons (recurrenceDetection.ts). */
 const TOLERANCIA_IMPORT_CONCILIACIO = 0.15;
 
 function esConciliat(compteId: string, data: string, importCents: number, moviments: MovimentPerConciliacio[]): boolean {

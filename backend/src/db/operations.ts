@@ -17,7 +17,7 @@ import type {
 import { splitNousIDuplicats } from '../dedup/index.ts';
 import { splitNousRecurrentsIDuplicats } from '../dedup/recurrents.ts';
 import { pickCategoriaId } from '../lib/categorization.ts';
-import { normalizeConceptForDedup, normalizeConceptForRecurrence } from '../lib/concept.ts';
+import { normalizeConceptForDedup } from '../lib/concept.ts';
 import { isoAvui } from '../lib/dates.ts';
 import { computeContrapartidaId } from '../lib/hash.ts';
 import { suggereixTransferenciesInternes, type SuggerimentTransferencia } from '../lib/internalTransfers.ts';
@@ -30,13 +30,6 @@ import {
   type PuntSerieDiaria,
   type RecurrentPerProjeccio,
 } from '../lib/prevision.ts';
-import {
-  detectaRecurrents,
-  estimaLiquidacioTargeta,
-  type CandidatRecurrent,
-  type MovimentCandidat,
-  type MovimentTargetaCandidat,
-} from '../lib/recurrenceDetection.ts';
 import type { ParsedRecurrentImport } from '../parsers/recurrentsFile.ts';
 import type { AccountType, BankId, ParsedMoviment } from '../parsers/types.ts';
 
@@ -869,16 +862,6 @@ export function creaRecurrentManual(data: DadesRecurrent): Recurrent {
   return inserirRecurrent(data, 'manual', 'confirmat');
 }
 
-/** Confirma un candidat detectat (sub-fase 3.4, especificacio.md 4.1.5): l'usuari pot haver corregit periodicitat/import/data/categoria abans de confirmar-lo — la "confiança" i el rang d'import del candidat no es persisteixen (només són senyals de revisió, no dades del recurrent). */
-export function confirmaCandidatRecurrent(data: DadesRecurrent): Recurrent {
-  return inserirRecurrent(data, 'detectat', 'confirmat');
-}
-
-/** Descarta un candidat detectat (falsa alarma): no torna a aparèixer a detectaCandidatsRecurrents per a la mateixa clau (compte, concepte, signe), sense necessitat que l'usuari en corregeixi cap camp. */
-export function ignoraCandidatRecurrent(data: DadesRecurrent): Recurrent {
-  return inserirRecurrent(data, 'detectat', 'ignorat');
-}
-
 /** Corregeix un recurrent ja existent (manual, importat o confirmat des d'un candidat) — spec 4.1.5 "corregir". Recalcula concepteNormalitzat si el concepte canvia. */
 export function actualitzaRecurrent(
   id: string,
@@ -1000,87 +983,6 @@ export function importaRecurrents(compteId: string, parsed: ParsedRecurrentImpor
   }
 
   return { nous: nous.length, duplicats };
-}
-
-/** Concepte fix per a l'estimació agregada d'una targeta (sub-fase 3.5 revisada) — no depèn de l'àlies del compte perquè la clau de "ja decidit" no es desvinculi si l'usuari el renomena. */
-const CONCEPTE_ESTIMACIO_TARGETA = 'Liquidació estimada de targeta';
-
-/**
- * Motor de detecció de periodicitat (sub-fase 3.3, especificacio.md 4.1):
- * calcula candidats sobre l'històric real de moviments de **compte corrent**,
- * sense persistir res (es recalculen a cada crida, com decidit a la 3.1),
- * exclosos els marcats com a transferència interna i les contrapartides
- * virtuals de liquidació (spec 3.2.1) — cap dels dos representa consum real.
- * Un candidat no es torna a mostrar si ja existeix un recurrent confirmat o
- * ignorat pel mateix (compte, concepte normalitzat per a recurrència, signe):
- * la comparació es fa recalculant `normalizeConceptForRecurrence` sobre el
- * `concepte` cru de cada recurrent ja existent, no sobre el seu
- * `concepteNormalitzat` emmagatzemat — aquest es va guardar amb la
- * normalització de deduplicació (3.1/3.2), més estricta, que no coincideix
- * necessàriament amb la normalització difusa usada aquí per agrupar.
- *
- * Les targetes **no** passen per aquest motor (sub-fase 3.5 revisada): amb
- * tants comerços diferents i imports irregulars, la detecció per patrons hi
- * és poc fiable. En lloc d'això, cada targeta amb `diaLiquidacio` configurat
- * rep un únic candidat agregat amb l'estimació del total de la propera
- * liquidació (`estimaLiquidacioTargeta`, mitjana dels últims cicles de
- * facturació) — sense desglossar per comerç ni categoria. Una targeta sense
- * `diaLiquidacio` configurat no genera cap candidat: no hi ha manera fiable
- * de delimitar els cicles ni de saber quan es liquidarà.
- *
- * `avui` (ISO, per defecte la data real) es passa a totes les funcions de
- * càlcul de dates internes perquè siguin testejables de manera determinista.
- */
-export function detectaCandidatsRecurrents(avui: string = isoAvui()): CandidatRecurrent[] {
-  const comptes = listComptes();
-  if (comptes.length === 0) return [];
-
-  const totsMoviments = listAllMoviments().filter((m) => !m.esTransferenciaInterna && !m.movimentOrigenId);
-  const compteById = new Map(comptes.map((c) => [c.id, c]));
-
-  const clausJaDecidides = new Set(
-    listRecurrents().map((r) => `${r.compteId}|${normalizeConceptForRecurrence(r.concepte)}|${Math.sign(r.importCents)}`),
-  );
-
-  const movimentsCorrent: MovimentCandidat[] = totsMoviments
-    .filter((m) => compteById.get(m.compteId)?.tipus === 'corrent')
-    .map((m) => ({ id: m.id, compteId: m.compteId, dataOperacio: m.dataOperacio, concepteOriginal: m.concepteOriginal, importCents: m.importCents }));
-
-  const candidatsPatro = detectaRecurrents(movimentsCorrent, avui).filter(
-    (c) => !clausJaDecidides.has(`${c.compteId}|${c.concepteNormalitzat}|${Math.sign(c.importEstimatCents)}`),
-  );
-
-  const concepteNormalitzatTargeta = normalizeConceptForRecurrence(CONCEPTE_ESTIMACIO_TARGETA);
-  const candidatsTargeta: CandidatRecurrent[] = [];
-  for (const compte of comptes) {
-    if (compte.tipus !== 'targeta' || !compte.diaLiquidacio) continue;
-
-    const movimentsTargeta: MovimentTargetaCandidat[] = totsMoviments
-      .filter((m) => m.compteId === compte.id)
-      .map((m) => ({ id: m.id, dataOperacio: m.dataOperacio, importCents: m.importCents }));
-
-    const estimacio = estimaLiquidacioTargeta(movimentsTargeta, compte.diaLiquidacio, avui);
-    if (!estimacio) continue;
-
-    const clau = `${compte.id}|${concepteNormalitzatTargeta}|${Math.sign(estimacio.importEstimatCents)}`;
-    if (clausJaDecidides.has(clau)) continue;
-
-    candidatsTargeta.push({
-      compteId: compte.id,
-      concepte: CONCEPTE_ESTIMACIO_TARGETA,
-      concepteNormalitzat: concepteNormalitzatTargeta,
-      periodicitat: 'mensual',
-      importEstimatCents: estimacio.importEstimatCents,
-      importMinCents: estimacio.importMinCents,
-      importMaxCents: estimacio.importMaxCents,
-      dataPrevista: estimacio.dataPrevista,
-      ocurrencies: estimacio.periodesUsats,
-      confianca: estimacio.confianca,
-      movimentIds: estimacio.movimentIds,
-    });
-  }
-
-  return [...candidatsPatro, ...candidatsTargeta].sort((a, b) => a.dataPrevista.localeCompare(b.dataPrevista));
 }
 
 // --- Motor de previsió (especificacio.md 4.3, sub-fase 4.1) ---

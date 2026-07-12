@@ -22,7 +22,7 @@ interface Props {
   onChanged: () => void;
 }
 
-/** Afegir manualment un recurrent que el motor de detecció no ha vist (spec 4.1.5), p. ex. un rebut anual amb una sola ocurrència a l'històric. Mateix format de columnes (i amplades) que RecurrentsList/RecurrentsCandidatsList. */
+/** Afegir manualment un recurrent (spec 4.1.5), p. ex. un rebut anual o una subscripció. Mateix format de columnes (i amplades) que RecurrentsList. */
 export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
   const [compteId, setCompteId] = useState(comptes[0]?.id ?? '');
   const [concepte, setConcepte] = useState('');

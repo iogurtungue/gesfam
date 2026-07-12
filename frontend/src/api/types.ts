@@ -204,24 +204,6 @@ export interface DadesRecurrent {
   referencia?: string;
 }
 
-/** Periodicitats que el motor de detecció pot produir (mai 'unica', reservada a compromisos manuals/importats). */
-export type PeriodicitatDetectable = Exclude<PeriodicitatRecurrent, 'unica'>;
-
-/** Candidat detectat pel motor de periodicitat (sub-fase 3.3), encara no persistit — es recalcula a cada crida. */
-export interface CandidatRecurrent {
-  compteId: string;
-  concepte: string;
-  concepteNormalitzat: string;
-  periodicitat: PeriodicitatDetectable;
-  importEstimatCents: number;
-  importMinCents: number;
-  importMaxCents: number;
-  dataPrevista: string;
-  ocurrencies: number;
-  confianca: number;
-  movimentIds: string[];
-}
-
 export interface CommitImportResult {
   lot: LotImportacio;
   nous: number;
