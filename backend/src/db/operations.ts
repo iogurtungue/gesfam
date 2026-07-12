@@ -23,6 +23,7 @@ import { computeContrapartidaId } from '../lib/hash.ts';
 import { suggereixTransferenciesInternes, type SuggerimentTransferencia } from '../lib/internalTransfers.ts';
 import { pickTargetaLiquidacio } from '../lib/liquidacioTargeta.ts';
 import {
+  avancaPeriodicitat,
   construeixSerieDiaria,
   projectaEsdeveniments,
   type EsdevenimentPrevist,
@@ -941,6 +942,32 @@ export function eliminaRecurrent(id: string): void {
   }
   backupDbFile();
   getDb().prepare('DELETE FROM recurrents WHERE id = ?').run(id);
+}
+
+/**
+ * Descarta una ocurrència concreta prevista a la pestanya de Previsió
+ * (especificacio.md 4.3): per a un compromís puntual (`unica`), l'única
+ * ocurrència que tindrà mai és aquesta, així que descartar-la equival a
+ * eliminar el recurrent sencer. Per a un recurrent periòdic, en canvi, el
+ * recurrent ha de continuar existint per a les properes ocurrències — només
+ * s'avança `dataPrevista` a la propera repetició després de `dataOcurrencia`
+ * (no necessàriament la `dataPrevista` desada, que pot estar desfasada).
+ */
+export function eliminaOcurrenciaPrevista(recurrentId: string, dataOcurrencia: string): void {
+  const row = getDb().prepare('SELECT * FROM recurrents WHERE id = ?').get(recurrentId) as RecurrentRow | undefined;
+  if (!row) {
+    throw new Error('El recurrent indicat no existeix.');
+  }
+  const { periodicitat } = rowToRecurrent(row);
+
+  if (periodicitat === 'unica') {
+    eliminaRecurrent(recurrentId);
+    return;
+  }
+
+  backupDbFile();
+  const novaDataPrevista = avancaPeriodicitat(dataOcurrencia, periodicitat);
+  getDb().prepare('UPDATE recurrents SET data_prevista = ? WHERE id = ?').run(novaDataPrevista, recurrentId);
 }
 
 export interface ImportaRecurrentsResult {

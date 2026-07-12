@@ -59,7 +59,10 @@ backend/src/
                       (marcaLiquidacioTargeta/desmarcaLiquidacioTargeta/suggereixLiquidacionsTargeta,
                       especificacio.md 3.2.1), recurrents manuals/importats sense cap detecció
                       automàtica (especificacio.md 4.1/4.2), motor de previsió (`calculaPrevisio`,
-                      especificacio.md 4.3, sub-fase 4.1), còpia de seguretat, reinicialització —
+                      especificacio.md 4.3, sub-fase 4.1) i `eliminaOcurrenciaPrevista` (descartar
+                      una ocurrència des de la pestanya Previsió: elimina el recurrent si és
+                      `unica`, avança `dataPrevista` a la propera repetició si és periòdic),
+                      còpia de seguretat, reinicialització —
                       equivalent 1:1 al `db/operations.ts` de Dexie de l'antiga arquitectura, ara
                       amb SQL preparat en lloc de crides a Dexie
 
@@ -100,7 +103,9 @@ frontend/src/
                     Previsio.tsx (pestanya "Previsió", ubicada després de "Moviments"; especificacio.md
                     4.3, sub-fase 4.2: selector d'horitzó 30/60/90/lliure, gràfic de saldo projectat
                     via recharts i taula cronològica dels moviments previstos amb els mateixos filtres
-                    que Moviments — categoria/tipus/TI/text —, cridant `GET /api/previsio`)
+                    que Moviments — categoria/tipus/TI/text —, cridant `GET /api/previsio`; edició
+                    in-line del recurrent subjacent i eliminació d'una ocurrència des de la mateixa
+                    fila, via `lib/recurrentEdit.ts` compartit amb RecurrentsList.tsx)
   import/           ImportWizard.tsx (puja fitxers via FormData a /api/importacio/*),
                     ManualMapping.tsx, LotsList.tsx
   App.tsx           Navegació per pestanyes + estat global (comptes/lots/categories/regles)
@@ -127,7 +132,7 @@ frontend/src/
 
 ### Estat de les proves
 
-Backend: 189 tests (Vitest) — parsers (inclou `recurrentsFile.ts`, el parser del format fix de compromisos), dedup (inclou `dedup/recurrents.ts`), `lib/` (inclou `liquidacioTargeta.ts`, `computeContrapartidaId`, `computeRecurrentHash`, `dates.ts` — `afegeixDies`/`afegeixMesos`/`diesEntre`/`isoAvui`, reutilitzats pel motor de previsió —, i el motor de previsió `prevision.ts`: `projectaEsdeveniments`/`construeixSerieDiaria`), `db/operations.ts` contra SQLite en memòria (`GESFAM_DB_PATH=':memory:'`, inclou el mecanisme de liquidació de targeta: marcatge, quadratura, idempotència, cascada via `undoLot`; i el model de recurrents: creació manual, validacions, eliminació, importació amb dedup i resolució de categoria, còpia de seguretat, manteniment), `db/client.ts` (migracions) i `db/backupFile.ts` (còpia + retenció). Frontend: 36 tests — `lib/balance.ts`, `lib/summary.ts`, `lib/dates.ts` (inclou `faDiesAbans`), `lib/numbers.ts` (només lògica de visualització; els components de vista, inclosos els de recurrents i ara `views/Previsio.tsx` — no tenen tests propis: es verifiquen manualment/via HTTP, seguint el mateix criteri que la resta de `views/`/`import/`). `npx tsc -b` net a totes dues bandes, `npm run build` (frontend) i `oxlint` (frontend) nets.
+Backend: 193 tests (Vitest) — parsers (inclou `recurrentsFile.ts`, el parser del format fix de compromisos), dedup (inclou `dedup/recurrents.ts`), `lib/` (inclou `liquidacioTargeta.ts`, `computeContrapartidaId`, `computeRecurrentHash`, `dates.ts` — `afegeixDies`/`afegeixMesos`/`diesEntre`/`isoAvui`, reutilitzats pel motor de previsió —, i el motor de previsió `prevision.ts`: `projectaEsdeveniments`/`construeixSerieDiaria`), `db/operations.ts` contra SQLite en memòria (`GESFAM_DB_PATH=':memory:'`, inclou el mecanisme de liquidació de targeta: marcatge, quadratura, idempotència, cascada via `undoLot`; i el model de recurrents: creació manual, validacions, eliminació, importació amb dedup i resolució de categoria, còpia de seguretat, manteniment), `db/client.ts` (migracions) i `db/backupFile.ts` (còpia + retenció). Frontend: 36 tests — `lib/balance.ts`, `lib/summary.ts`, `lib/dates.ts` (inclou `faDiesAbans`), `lib/numbers.ts` (només lògica de visualització; els components de vista, inclosos els de recurrents i ara `views/Previsio.tsx` — no tenen tests propis: es verifiquen manualment/via HTTP, seguint el mateix criteri que la resta de `views/`/`import/`). `npx tsc -b` net a totes dues bandes, `npm run build` (frontend) i `oxlint` (frontend) nets.
 
 Verificació addicional (no automatitzada, feta manualment durant la migració d'arquitectura, vegeu historial): migració de la còpia de seguretat JSON real de l'usuari (4 comptes, 266 moviments, 4 lots, 23 categories, 15 regles) a SQLite amb comparació camp a camp — 0 diferències reals; arrencada de `npm start` real contra `dades/finances.db` migrat, import/undo/eliminar compte de prova via HTTP (confirmant que `backupDbFile()` es dispara), i reinici del servidor confirmant que les dades hi són intactes.
 
@@ -142,6 +147,24 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Un recurrent ja confirmat amb `dataPrevista` passada no s'actualitza automàticament a la seva pròpia fila**: l'usuari l'ha de corregir a mà des de l'edició in-line si vol que `dataPrevista` reflecteixi la realitat. El motor de previsió (Fase 4, 4.1) ja ho gestiona sense necessitat d'aquesta correcció manual: per a un periòdic avança silenciosament fins la primera ocurrència futura, i per a un `unica` vençut i encara no conciliat, el projecta avui mateix marcat `vençut: true` (vegeu entrada d'historial corresponent) en lloc de desaparèixer o quedar-se enrere.
 - **Fase 5 (opcional)**: simulacions manuals, despesa difusa, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
+
+### 2026-07-12 — Previsió: editar i eliminar el recurrent d'una ocurrència prevista
+
+L'usuari va demanar poder editar i eliminar qualsevol fila de la taula "Moviments previstos", amb una regla explícita per a l'eliminació: un compromís puntual (`unica`) s'elimina sencer; un recurrent periòdic, en canvi, no s'elimina — la seva `dataPrevista` s'avança a la propera repetició.
+
+**Backend**:
+- `lib/prevision.ts`: `avancaPeriodicitat` (fins ara privada) ara s'exporta, perquè `operations.ts` la reutilitzi sense duplicar l'aritmètica de periodicitats.
+- `db/operations.ts`: nova `eliminaOcurrenciaPrevista(recurrentId, dataOcurrencia)`. Si el recurrent és `unica`, delega a `eliminaRecurrent` (elimina la fila sencera, amb còpia de seguretat com sempre). Si és periòdic, fa `backupDbFile()` i actualitza `dataPrevista` a `avancaPeriodicitat(dataOcurrencia, periodicitat)` — **important**: avança a partir de la data de l'ocurrència que l'usuari ha descartat (`dataOcurrencia`, la que es veu a la taula), no a partir de la `dataPrevista` desada, que pot estar desfasada.
+- `routes.ts`: nova ruta `POST /recurrents/:id/elimina-ocurrencia` amb body `{ data }`.
+
+**Frontend**:
+- Nou mòdul compartit `lib/recurrentEdit.ts` (`EsborranyEdicio`, `esborranyDe`, `esborranyAPayload`): extreu la lògica d'esborrany d'edició que abans només vivia dins `RecurrentsList.tsx`, perquè `Previsio.tsx` en pugui fer exactament el mateix ús sense duplicar-la. `RecurrentsList.tsx` s'actualitza per usar-lo (sense cap canvi de comportament).
+- `views/Previsio.tsx`: nova columna "Accions" (Edita/Elimina) a la taula. **Edita** obre una fila expandible (mateix patró que el formulari inline de "crea un recurrent" a `MovimentsList.tsx`) amb tots els camps del recurrent (concepte, periodicitat, data prevista, data fi, import + aprox., categoria, referència, TI) — edita el `Recurrent` sencer, no un esdeveniment individual, ja que no hi ha cap entitat persistida per a una sola ocurrència. **Elimina** demana confirmació amb un missatge diferent si el recurrent és periòdic (avisa que s'avançarà, no que s'eliminarà) i crida la nova ruta amb la data exacta de l'ocurrència mostrada.
+- Ara `Previsio.tsx` també carrega `listRecurrents()` (a més de `calculaPrevisio`) per tenir les dades completes del recurrent necessàries per a l'edició.
+
+Tests: 4 nous a `operations.test.ts` (`eliminaOcurrenciaPrevista` elimina un `unica` sencer, avança un periòdic a partir de la data de l'ocurrència descartada —no de la `dataPrevista` desfasada—, clampa a final de mes en avançar, llença error amb un id inexistent) — 193 tests backend en total. `tsc -b`/`oxlint`/`vite build` nets a totes dues bandes; 36 tests frontend sense canvis.
+
+Validat contra l'històric real (còpia temporal, servidor real arrencat i aturat en acabar, esborrada després): es van crear dos recurrents de prova (un `mensual` i un `unica`) i es va confirmar per HTTP que descartar l'ocurrència del mensual avança `dataPrevista` de 2026-07-15 a 2026-08-15 sense eliminar el recurrent, i que descartar el `unica` l'elimina completament. Nota al marge, sense relació amb aquest canvi: la còpia real actual encara conté 1 fila `estat='ignorat'` (`origen='detectat'`, "Liquidació estimada de targeta") que es creia eliminada en una entrada anterior — probablement reaparescuda per una restauració de còpia de seguretat feta per l'usuari des de l'app real en paral·lel; és invisible a la UI i inofensiva, no s'ha tocat.
 
 ### 2026-07-12 — Previsió: un `unica` vençut es desplaça a avui+10 dies (no avui), amb el venciment original visible
 

@@ -225,6 +225,18 @@ router.delete('/recurrents/:id', (req, res) => {
   }
 });
 
+// --- Descartar una ocurrència prevista des de la pestanya de Previsió (spec 4.3) ---
+
+router.post('/recurrents/:id/elimina-ocurrencia', (req, res) => {
+  const { data } = req.body as { data: string };
+  try {
+    ops.eliminaOcurrenciaPrevista(req.params.id, data);
+    res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
 // --- Previsió (spec 4.3, sub-fase 4.1) ---
 
 router.get('/previsio', (req, res) => {

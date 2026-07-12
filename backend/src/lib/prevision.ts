@@ -56,7 +56,8 @@ function esConciliat(compteId: string, data: string, importCents: number, movime
   );
 }
 
-function avancaPeriodicitat(data: string, periodicitat: Exclude<PeriodicitatRecurrent, 'unica'>): string {
+/** Avança una data un període segons la periodicitat (mesos de calendari o dies). Exportada perquè `db/operations.ts` la reutilitzi en descartar una ocurrència prevista d'un recurrent periòdic (spec 4.3). */
+export function avancaPeriodicitat(data: string, periodicitat: Exclude<PeriodicitatRecurrent, 'unica'>): string {
   switch (periodicitat) {
     case 'setmanal':
       return afegeixDies(data, 7);

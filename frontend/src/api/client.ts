@@ -219,6 +219,11 @@ export function eliminaRecurrent(id: string): Promise<void> {
   return req(`/recurrents/${id}`, { method: 'DELETE' });
 }
 
+/** Descarta una ocurrència prevista des de la pestanya de Previsió (especificacio.md 4.3): elimina el recurrent sencer si és puntual (`unica`), o avança `dataPrevista` a la propera repetició si és periòdic. */
+export function eliminaOcurrenciaPrevista(recurrentId: string, data: string): Promise<void> {
+  return req(`/recurrents/${recurrentId}/elimina-ocurrencia`, { method: 'POST', ...json({ data }) });
+}
+
 export async function previsualitzaImportacioRecurrents(file: File): Promise<PrevisualitzacioRecurrentsResult> {
   const form = new FormData();
   form.append('fitxer', file);

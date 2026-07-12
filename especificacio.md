@@ -125,6 +125,7 @@ Alguns imports i dates ja es coneixen amb certesa abans que el moviment aparegui
 - Projecció dia a dia fins a l'horitzó triat (30 / 60 / 90 dies, i camp lliure): a cada data prevista d'un recurrent confirmat, aplicar-ne l'import estimat.
 - **Despesa no recurrent (banda d'incertesa)**: **ajornada** — no es fa a la v1 d'aquesta fase; la projecció es basa només en els recurrents confirmats. Es podrà afegir més endavant sense canviar el disseny base del motor.
 - **Sortides**: gràfic de saldo projectat (línia de saldo cert-a-avui + projecció), taula cronològica dels moviments previstos amb els mateixos filtres que la pestanya de Moviments (categoria, tipus ingrés/càrrec, transferència interna, cerca de text), i **alertes**: dates en què el saldo projectat baixa d'un llindar configurable o es fa negatiu — **llindar global** (sobre el saldo total de la selecció activa) **i llindar per compte** (cadascun amb el seu propi valor opcional).
+- **Editar/eliminar des de la taula de previstos**: com que cada fila és una ocurrència projectada del recurrent subjacent (no una entitat pròpia), "editar" edita el recurrent sencer. "Eliminar" segueix una regla segons periodicitat: un compromís **puntual** (`unica`) s'elimina del tot; un recurrent **periòdic** no s'elimina — es descarta només aquesta ocurrència, avançant `dataPrevista` a la propera repetició.
 - **Simulació manual** (desitjable, fase 2): afegir moviments hipotètics puntuals («i si pago 3.000 € el dia 15?») i veure l'efecte sobre la corba.
 
 ## 5. Fora d'abast (v1)

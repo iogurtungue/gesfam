@@ -4,6 +4,7 @@ import type { Categoria, Compte, PeriodicitatRecurrent, Recurrent } from '../api
 import { formatDateEs } from '../lib/dates';
 import { centsToEs } from '../lib/numbers';
 import { PERIODICITAT_LABEL, TOTES_LES_PERIODICITATS } from '../lib/periodicitat';
+import { esborranyAPayload, esborranyDe, type EsborranyEdicio } from '../lib/recurrentEdit';
 import {
   cellAccions,
   cellCategoria,
@@ -24,30 +25,6 @@ interface Props {
   comptes: Compte[];
   categories: Categoria[];
   onChanged: () => void;
-}
-
-interface EsborranyEdicio {
-  concepte: string;
-  periodicitat: PeriodicitatRecurrent;
-  importEuros: string;
-  importAproximat: boolean;
-  dataPrevista: string;
-  dataFi: string;
-  categoriaId: string;
-  referencia: string;
-}
-
-function esborranyDe(r: Recurrent): EsborranyEdicio {
-  return {
-    concepte: r.concepte,
-    periodicitat: r.periodicitat,
-    importEuros: (r.importCents / 100).toString(),
-    importAproximat: r.importAproximat,
-    dataPrevista: r.dataPrevista,
-    dataFi: r.dataFi ?? '',
-    categoriaId: r.categoriaId ?? '',
-    referencia: r.referencia ?? '',
-  };
 }
 
 /** Llistat dels recurrents ja confirmats (manuals, importats o confirmats des d'un candidat detectat), amb edició i eliminació (sub-fase 3.4). */
@@ -85,20 +62,11 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
 
   async function handleDesa(id: string) {
     if (!esborrany) return;
-    const importCents = Math.round(parseFloat(esborrany.importEuros.replace(',', '.')) * 100);
-    if (Number.isNaN(importCents)) return;
+    const payload = esborranyAPayload(esborrany);
+    if (!payload) return;
     setDesant(true);
     try {
-      await actualitzaRecurrent(id, {
-        concepte: esborrany.concepte,
-        periodicitat: esborrany.periodicitat,
-        importCents,
-        importAproximat: esborrany.importAproximat,
-        dataPrevista: esborrany.dataPrevista,
-        dataFi: esborrany.dataFi || null,
-        categoriaId: esborrany.categoriaId || null,
-        referencia: esborrany.referencia || null,
-      });
+      await actualitzaRecurrent(id, payload);
       setEditant(null);
       onChanged();
     } finally {

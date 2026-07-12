@@ -21,6 +21,7 @@ const {
   desmarcaLiquidacioTargeta,
   eliminaCompte,
   eliminaMoviment,
+  eliminaOcurrenciaPrevista,
   eliminaRecurrent,
   eliminaTotsElsMoviments,
   exportaCopiaSeguretat,
@@ -613,6 +614,58 @@ describe('recurrents (sub-fase 3.1, especificacio.md 4.1/4.2)', () => {
 
   it('eliminaRecurrent throws for an id that does not exist', () => {
     expect(() => eliminaRecurrent('no-existeix')).toThrow();
+  });
+
+  it('eliminaOcurrenciaPrevista deletes a punctual (unica) recurrent entirely', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const recurrent = creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Factura',
+      periodicitat: 'unica',
+      importCents: -5000,
+      dataPrevista: '2026-08-01',
+    });
+
+    eliminaOcurrenciaPrevista(recurrent.id, '2026-08-01');
+
+    expect(listRecurrents()).toEqual([]);
+  });
+
+  it('eliminaOcurrenciaPrevista advances a periodic recurrent to the next occurrence after the dismissed one, without deleting it', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const recurrent = creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Netflix',
+      periodicitat: 'mensual',
+      importCents: -1200,
+      dataPrevista: '2026-05-15',
+    });
+
+    // Dismissing the occurrence at 2026-07-15 (not the stale stored dataPrevista) should advance to 2026-08-15.
+    eliminaOcurrenciaPrevista(recurrent.id, '2026-07-15');
+
+    const [actualitzat] = listRecurrents();
+    expect(actualitzat.id).toBe(recurrent.id);
+    expect(actualitzat.dataPrevista).toBe('2026-08-15');
+  });
+
+  it('eliminaOcurrenciaPrevista clamps to the end of a shorter month when advancing', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const recurrent = creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Rebut',
+      periodicitat: 'mensual',
+      importCents: -1000,
+      dataPrevista: '2026-01-31',
+    });
+
+    eliminaOcurrenciaPrevista(recurrent.id, '2026-01-31');
+
+    expect(listRecurrents()[0].dataPrevista).toBe('2026-02-28');
+  });
+
+  it('eliminaOcurrenciaPrevista throws for an id that does not exist', () => {
+    expect(() => eliminaOcurrenciaPrevista('no-existeix', '2026-08-01')).toThrow();
   });
 
   it('is included in the JSON backup export/import round-trip', () => {
