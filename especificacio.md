@@ -111,7 +111,10 @@ A banda dels recurrents detectats automàticament sobre l'històric (4.1), algun
   | Categoria | No | Si el nom coincideix amb una categoria existent, s'assigna automàticament |
   | Referència | No | Núm. de factura, només informatiu |
 
-- **[OBERT]** Conciliació amb el moviment real: quan el moviment bancari corresponent s'acaba important normalment (3.1), cal evitar comptar-lo dues vegades a la previsió (un cop com a compromís confirmat, un altre com a moviment real ja carregat). Mecanisme de conciliació (per import + data + compte, similar als suggeriments de transferència interna de 3.4, o marcatge manual «ja liquidat») a resoldre durant la implementació de la Fase 4 (motor de previsió), però a tenir present ja en el disseny del model.
+- **Conciliació amb el moviment real** (dissenyada a la sub-fase 3.6; implementació efectiva a la Fase 4): quan el moviment bancari corresponent s'acaba important normalment (3.1), cal evitar comptar-lo dues vegades a la previsió (un cop com a recurrent/compromís confirmat, un altre com a moviment real ja carregat). Disseny acordat:
+  - **Totalment automàtica, sense suggeriment ni confirmació de l'usuari** (a diferència de les transferències internes, 3.4): quan el motor de previsió vulgui projectar la propera ocurrència d'un recurrent a una data D, comprova si el compte ja té un moviment real d'import semblant en una finestra de pocs dies al voltant de D (excloent transferències internes); si en troba un, no la projecta. Es recalcula a cada crida, mai es persisteix una coincidència — un error només afecta una xifra de previsió temporal que s'autocorregeix la propera vegada, no una dada real (a diferència de vincular malament dues transferències, que sí que embrutaria dades permanents).
+  - **Cap taula ni camp nou**: coherent amb la resta de la Fase 3 (candidats detectats, estimació de targeta), on mai es persisteix una coincidència calculada.
+  - Un compromís puntual (`periodicitat='unica'`) ja conciliat simplement deixa de projectar-se per sempre; la fila de `Recurrent` no s'esborra sola — si cal netejar-la, l'usuari ja la pot eliminar a mà com ara.
 
 ### 4.3 Motor de previsió
 
@@ -134,8 +137,8 @@ Multiusuari i autenticació; connexió automàtica amb bancs; app mòbil nativa;
    - **3.2 — Importació de compromisos confirmats**: nou tipus d'importació (factures de proveïdor amb venciment conegut, format i flux a 4.2).
    - **3.3 — Motor de detecció de periodicitat**: normalització de concepte, agrupació, classificació de periodicitat, import estimat i confiança (4.1), sobre l'històric bancari real.
    - **3.4 — Pantalla de revisió/confirmació unificada**: candidats detectats (3.3) + compromisos manuals/importats (3.2), amb accions de confirmar/corregir/ignorar/eliminar.
-   - **3.5 — Exclusions i cas de targetes**: transferències internes i contrapartides de liquidació excloses de la detecció; recurrents de targeta relacionats amb la data de liquidació al compte corrent.
-   - **3.6 — (frontera amb Fase 4) Conciliació**: disseny del mecanisme perquè un compromís confirmat i el moviment bancari real que finalment el liquida no comptin dues vegades a la previsió; implementació efectiva ajornada a la Fase 4 (4.2, punt [OBERT]).
+   - **3.5 — Exclusions i cas de targetes**: transferències internes i contrapartides de liquidació excloses de la detecció. Per a targetes, la detecció per patrons no és fiable (massa comerços diferents i irregulars); en lloc d'això, cada targeta amb `diaLiquidacio` configurat rep una única estimació agregada (mitjana dels últims cicles de facturació), sense desglossar per comerç ni categoria.
+   - **3.6 — (frontera amb Fase 4) Conciliació**: dissenyat (4.2) — mecanisme totalment automàtic i calculat al vol (sense taula ni camp nou) perquè un recurrent confirmat i el moviment bancari real que finalment el liquida no comptin dues vegades a la previsió; implementació efectiva ajornada a la Fase 4.
 4. **Fase 4 — Previsió**: motor de projecció, gràfic, taula, alertes de llindar. *Criteri*: la previsió a 30 dies quadra amb el que l'usuari espera manualment (±revisió conjunta).
 5. **Fase 5 (opcional)**: parser Norma 43, simulacions, despesa difusa, exportacions addicionals.
 

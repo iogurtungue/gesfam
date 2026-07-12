@@ -123,8 +123,8 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 
 ### Pendent / coses obertes
 
-- **[OBERT] de l'especificació, sense confirmar encara**: despesa difusa a la previsió (fase 4), llindar d'alerta de saldo mínim, i mecanisme de conciliació entre un compromís confirmat i el moviment bancari real que el liquida (§4.2, veure sub-fase 3.6).
-- **Fase 3 (recurrents) iniciada**: l'usuari ha confirmat començar-la, per sub-fases. Pla acordat i documentat a `especificacio.md` (§4.1, §4.2, §6 punt 3): **3.1 model de dades unificat — FET**, **3.2 importació de compromisos confirmats — FET**, **3.3 motor de detecció de periodicitat — FET**, **3.4 pantalla de revisió/confirmació unificada — FET**, **3.5 cas de targetes — FET, revisada** (vegeu historial: la primera versió de la 3.5 aplicava el motor de detecció per patrons també a les targetes; l'usuari la va trobar massa complexa i poc fiable per a targetes — massa comerços diferents i irregulars — i es va substituir per una estimació agregada per mitjana de cicles de liquidació, sense desglossar per comerç ni categoria); 3.6 conciliació (disseny només, frontera amb Fase 4) — encara no implementada.
+- **[OBERT] de l'especificació, sense confirmar encara**: despesa difusa a la previsió (fase 4), llindar d'alerta de saldo mínim.
+- **Fase 3 (recurrents) COMPLETA**, per sub-fases (pla a `especificacio.md` §4.1, §4.2, §6 punt 3): **3.1 model de dades unificat**, **3.2 importació de compromisos confirmats**, **3.3 motor de detecció de periodicitat**, **3.4 pantalla de revisió/confirmació unificada**, **3.5 cas de targetes** (revisada: la primera versió aplicava detecció per patrons també a targetes, massa complexa i poc fiable — substituïda per una estimació agregada per mitjana de cicles de liquidació), **3.6 conciliació — dissenyada** (vegeu historial: mecanisme totalment automàtic i calculat al vol, sense taula ni camp nou; **implementació efectiva ajornada a la Fase 4**, que encara no ha començat).
 - **Nova pestanya "Recurrents"** (abans la importació/llistat de compromisos vivia sota "Importar"): decisió presa sense preguntar explícitament, per no amuntegar tot sota "Importar" un cop hi ha també candidats detectats i formulari manual — reconsiderar si l'usuari ho prefereix d'una altra manera.
 - **La importació de compromisos (3.2) no té "lot"/desfer com la importació bancària**: cada fila importada és un `recurrent` independent, eliminable un a un (`eliminaRecurrent`, ja de la 3.1) — decisió d'abast per no duplicar la maquinària de `lots`/`undoLot` per a un cas d'ús que sol ser de pocs registres. Revisar si el volum real ho justifica.
 - **Verificació de la UI de recurrents (3.2/3.4) només via API/build, no clic a clic**: no hi ha eina de navegador disponible en aquesta sessió; `tsc -b`, `oxlint` i `vite build` nets, i els fluxos sencers (previsualitzar+confirmar+dedup d'un import, detectar+confirmar-amb-correcció+ignorar un candidat, editar i eliminar un recurrent) verificats per HTTP contra un servidor i dades temporals. Falta la confirmació visual de l'usuari a un navegador real.
@@ -132,6 +132,19 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 4 (previsió)**: no iniciada.
 - **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
+
+### 2026-07-12 — Sub-fase 3.6: disseny de la conciliació (frontera amb Fase 4) — Fase 3 completa
+
+Última sub-fase de la Fase 3, explícitament **només de disseny** (l'especificació ja deia que la implementació efectiva s'ajorna a la Fase 4). Problema a resoldre: un `Recurrent` prediu un import a una data futura; quan arriba el moviment bancari real que el liquida, cal evitar comptar-lo dues vegades a la previsió (un cop com a projecció, un altre com a moviment real ja al saldo).
+
+Disseny acordat amb l'usuari (dues preguntes, totes dues amb la resposta recomanada):
+
+- **Totalment automàtica, sense suggeriment ni confirmació** — a diferència de les transferències internes (3.4), que sí que requereixen confirmar-les. Raó: aquí un error només afecta una xifra d'una previsió temporal que es recalcula (i s'autocorregeix) cada vegada, no una dada real — vincular malament dues transferències, en canvi, embrutaria dades permanents. Mecanisme: quan el motor de previsió (Fase 4) vulgui projectar la propera ocurrència d'un recurrent a una data D, comprovarà si el compte ja té un moviment real d'import semblant en una finestra de pocs dies al voltant de D (excloent transferències internes); si en troba un, no la projecta.
+- **Cap taula ni camp nou ara**: coherent amb la resta de la Fase 3 (candidats detectats, estimació de targeta), on mai es persisteix una coincidència calculada — es recalcula sempre. Un compromís puntual (`periodicitat='unica'`) ja conciliat simplement deixa de projectar-se per sempre; la fila de `Recurrent` no s'esborra sola (l'usuari ja la pot eliminar a mà si vol netejar-la).
+
+`especificacio.md` actualitzat: la secció 4.2 substitueix el punt **[OBERT]** de conciliació per aquest disseny concret (deixa de ser obert); el punt 3.6 del pla de fases (secció 6) es marca com a dissenyat; el punt 3.5 del mateix pla s'actualitza per reflectir la versió final (estimació agregada), no la primera versió (patrons) que va quedar superada durant la pròpia sub-fase 3.5.
+
+Sense canvis de codi — aquesta entrada només documenta l'acord de disseny. **Amb això, la Fase 3 (recurrents) queda completa**; la implementació de la conciliació, junt amb la resta del motor de previsió, són feina de la Fase 4 (encara no iniciada).
 
 ### 2026-07-12 — Bug: eliminar un recurrent no en feia còpia de seguretat abans
 
