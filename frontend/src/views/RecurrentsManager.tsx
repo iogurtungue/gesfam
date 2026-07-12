@@ -29,7 +29,7 @@ export function RecurrentsManager({ comptes, categories }: Props) {
       <RecurrentsCandidatsList candidats={candidats} comptes={comptes} categories={categories} onChanged={refresh} />
       <RecurrentManualForm comptes={comptes} categories={categories} onChanged={refresh} />
       <RecurrentsImportWizard comptes={comptes} onChanged={refresh} />
-      <RecurrentsList recurrents={recurrents} comptes={comptes} categories={categories} onChanged={refresh} />
+      <RecurrentsList recurrents={recurrents.filter((r) => r.estat === 'confirmat')} comptes={comptes} categories={categories} onChanged={refresh} />
     </section>
   );
 }

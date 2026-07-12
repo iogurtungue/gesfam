@@ -132,6 +132,14 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-12 — Bug: un candidat ignorat apareixia a la llista de "Recurrents confirmats"
+
+L'usuari va detectar que, en ignorar un candidat detectat, aquest apareixia igualment a la llista de "Recurrents confirmats" — quan hauria de quedar invisible (l'`estat='ignorat'` només ha d'evitar que el motor de detecció el torni a suggerir, com ja fan les transferències internes descartades, mai mostrar-se enlloc de la UI).
+
+Causa: `ignoraCandidatRecurrent` (3.4) sí que desa la fila amb `estat='ignorat'` correctament, però `RecurrentsManager.tsx` passava tots els resultats de `listRecurrents()` (confirmats **i** ignorats) directament a `RecurrentsList`, que no filtrava per `estat` — el backend sempre ha estat correcte, el bug era només de presentació al frontend.
+
+Fix: `views/RecurrentsManager.tsx` filtra ara `recurrents.filter((r) => r.estat === 'confirmat')` abans de passar-los a `RecurrentsList`. La fila ignorada segueix existint a la base de dades (necessari per no tornar-la a suggerir) però ja no es mostra enlloc — mateix comportament que una transferència descartada. No hi ha (encara) cap manera de desfer un "ignorar" des de la UI; si cal, s'hauria d'eliminar directament de la base de dades o afegir-hi una funcionalitat pròpia.
+
 ### 2026-07-12 — Sub-fase 3.4: pantalla de revisió/confirmació unificada de recurrents
 
 Quarta i última sub-fase (per ara) de la Fase 3: pantalla que tanca el cicle — candidats detectats (3.3), compromisos manuals/importats (3.1/3.2) —, amb accions de confirmar (amb correccions), ignorar, editar i eliminar (especificacio.md 4.1.5).
