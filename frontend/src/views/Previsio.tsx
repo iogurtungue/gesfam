@@ -1,10 +1,9 @@
-import { useEffect, useMemo, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
 import { calculaPrevisio } from '../api/client';
 import type { Categoria, Compte, Previsio as PrevisioResultat } from '../api/types';
 import { formatDateEs } from '../lib/dates';
 import { centsToEs } from '../lib/numbers';
-import { cellCategoria, cellCompte, cellConcepte, cellData, cellImport, cellStyle } from '../lib/recurrentsTable';
 
 interface Props {
   seleccionats: Compte[];
@@ -20,7 +19,6 @@ export function Previsio({ seleccionats, categories }: Props) {
   const [previsio, setPrevisio] = useState<PrevisioResultat>(PREVISIO_BUIDA);
 
   const compteIds = useMemo(() => seleccionats.map((c) => c.id), [seleccionats]);
-  const compteAlias = useMemo(() => new Map(seleccionats.map((c) => [c.id, c.alias])), [seleccionats]);
   const categoriaNom = useMemo(() => new Map(categories.map((c) => [c.id, c.nom])), [categories]);
 
   useEffect(() => {
@@ -35,6 +33,21 @@ export function Previsio({ seleccionats, categories }: Props) {
     () => previsio.serieDiaria.map((p) => ({ dataLabel: formatDateEs(p.data), saldo: p.saldoTotal / 100 })),
     [previsio.serieDiaria],
   );
+
+  // Saldo projectat de cada compte "en aquell moment" (una passada lineal, en
+  // el mateix ordre cronològic que ja retorna el backend): com que els
+  // esdeveniments ja venen ordenats per data, acumular-los d'un en un dona
+  // directament, per a QUALSEVOL compte de la selecció (no només el propi de
+  // la fila), el seu saldo projectat vigent en aquell punt — mateix efecte
+  // que `consultaSaldoPerCompte` a MovimentsList, sense necessitat de
+  // recalcular-ho amb una cerca per data.
+  const files = useMemo(() => {
+    const acumulat = { ...previsio.saldosInicials };
+    return previsio.esdeveniments.map((e) => {
+      acumulat[e.compteId] = (acumulat[e.compteId] ?? 0) + e.importCents;
+      return { esdeveniment: e, saldoPerCompte: { ...acumulat } };
+    });
+  }, [previsio]);
 
   if (seleccionats.length === 0) {
     return (
@@ -91,29 +104,82 @@ export function Previsio({ seleccionats, categories }: Props) {
       {previsio.esdeveniments.length === 0 ? (
         <p style={{ fontSize: 12, color: '#555' }}>Cap moviment previst en aquest horitzó.</p>
       ) : (
-        <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
-          <thead>
-            <tr>
-              <th style={{ ...cellStyle, ...cellData }}>Data</th>
-              <th style={{ ...cellStyle, ...cellCompte }}>Compte</th>
-              <th style={{ ...cellStyle, ...cellConcepte }}>Concepte</th>
-              <th style={{ ...cellStyle, ...cellImport }}>Import</th>
-              <th style={{ ...cellStyle, ...cellCategoria }}>Categoria</th>
-            </tr>
-          </thead>
-          <tbody>
-            {previsio.esdeveniments.map((e) => (
-              <tr key={`${e.recurrentId}-${e.data}`}>
-                <td style={{ ...cellStyle, ...cellData }}>{formatDateEs(e.data)}</td>
-                <td style={{ ...cellStyle, ...cellCompte }}>{compteAlias.get(e.compteId) ?? e.compteId}</td>
-                <td style={{ ...cellStyle, ...cellConcepte }}>{e.concepte}</td>
-                <td style={{ ...cellStyle, ...cellImport }}>{centsToEs(e.importCents, false)}</td>
-                <td style={{ ...cellStyle, ...cellCategoria }}>{e.categoriaId ? (categoriaNom.get(e.categoriaId) ?? '—') : '—'}</td>
+        // Una columna d'Import/Saldo per compte seleccionat (mateix criteri
+        // que la taula de Moviments): es veu de seguida quin compte rep cada
+        // esdeveniment previst i com evoluciona el saldo projectat de tots
+        // els comptes en paral·lel, no només el que té el moviment.
+        <div style={{ overflowX: 'auto' }}>
+          <table style={{ borderCollapse: 'collapse', fontSize: 12, whiteSpace: 'nowrap', width: '100%' }}>
+            <thead>
+              <tr>
+                <th style={{ ...cellStyle, ...cellData }} rowSpan={2}>
+                  Data
+                </th>
+                <th style={{ ...cellStyle, ...cellConcepte }} rowSpan={2}>
+                  Concepte
+                </th>
+                <th style={{ ...cellStyle, ...cellCategoria }} rowSpan={2}>
+                  Categoria
+                </th>
+                {seleccionats.map((c) => (
+                  <th key={c.id} style={cellStyle} colSpan={2}>
+                    {c.alias}
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+              <tr>
+                {seleccionats.map((c) => (
+                  <Fragment key={c.id}>
+                    <th style={{ ...cellStyle, ...cellNumeric }}>Import</th>
+                    <th style={{ ...cellStyle, ...cellNumeric }}>Saldo</th>
+                  </Fragment>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {files.map(({ esdeveniment: e, saldoPerCompte }) => (
+                <tr key={`${e.recurrentId}-${e.data}`}>
+                  <td style={{ ...cellStyle, ...cellData }}>{formatDateEs(e.data)}</td>
+                  <td style={{ ...cellStyle, ...cellConcepte }}>{e.concepte}</td>
+                  <td style={{ ...cellStyle, ...cellCategoria }}>{e.categoriaId ? (categoriaNom.get(e.categoriaId) ?? '—') : '—'}</td>
+                  {seleccionats.map((c) => {
+                    const saldo = saldoPerCompte[c.id];
+                    if (c.id === e.compteId) {
+                      return (
+                        <Fragment key={c.id}>
+                          <td style={{ ...cellStyle, ...cellNumeric, ...colorImport(e.importCents) }}>{centsToEs(e.importCents, false)}</td>
+                          <td style={{ ...cellStyle, ...cellNumeric, fontWeight: 'bold' }}>{saldo !== undefined ? centsToEs(saldo, false) : '—'}</td>
+                        </Fragment>
+                      );
+                    }
+                    return (
+                      <Fragment key={c.id}>
+                        <td style={cellStyle} />
+                        <td style={{ ...cellStyle, ...cellNumeric, color: '#999' }}>{saldo !== undefined ? centsToEs(saldo, false) : ''}</td>
+                      </Fragment>
+                    );
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </section>
   );
 }
+
+function colorImport(cents: number): React.CSSProperties {
+  return cents < 0 ? { color: '#c00' } : {};
+}
+
+const cellStyle: React.CSSProperties = { border: '1px solid #ccc', padding: '2px 6px' };
+
+function amplaFixa(px: number): React.CSSProperties {
+  return { width: px, minWidth: px, maxWidth: px, boxSizing: 'border-box', overflow: 'hidden' };
+}
+
+const cellData: React.CSSProperties = amplaFixa(80);
+const cellConcepte: React.CSSProperties = { whiteSpace: 'normal', overflowWrap: 'break-word', maxWidth: 220 };
+const cellCategoria: React.CSSProperties = amplaFixa(150);
+const cellNumeric: React.CSSProperties = { ...amplaFixa(80), textAlign: 'right', fontVariantNumeric: 'tabular-nums' };

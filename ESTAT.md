@@ -138,6 +138,15 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 5 (opcional)**: simulacions manuals, despesa difusa, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-12 — Previsió: la taula de moviments previstos passa a tenir una columna Import/Saldo per compte (com Moviments)
+
+Feedback de l'usuari sobre la taula de la 4.2: en lloc d'una sola columna "Compte" per fila, ha de ser com la taula de Moviments — totes les columnes dels comptes seleccionats en paral·lel, amb el saldo projectat a cada esdeveniment.
+
+- `views/Previsio.tsx`: la taula ja no té columna "Compte" ni "Import" únics; ara té una capçalera de dues files amb un parell Import/Saldo per cada compte seleccionat (`colSpan={2}`), igual que `MovimentsList.tsx`. El saldo projectat de cada compte "en aquell moment" es calcula amb una sola passada lineal sobre `previsio.esdeveniments` (que el backend ja retorna ordenats cronològicament): s'acumula cada import sobre `previsio.saldosInicials`, i com que la passada és en ordre de data creixent, el valor acumulat de QUALSEVOL compte en un punt donat ja és el seu saldo projectat vigent en aquell moment — no cal cap cerca addicional per data (a diferència de `consultaSaldoPerCompte` de `MovimentsList.tsx`, necessària allà perquè els moviments reals no vénen ja ordenats de la mateixa manera per a tots els comptes alhora). El compte propi de la fila mostra Import (amb color per signe) + Saldo en negreta; la resta de comptes mostren només el seu Saldo vigent, en gris, com fa `MovimentsList.tsx` amb el "saldo anterior".
+- Estils de columna propis del fitxer (ja no reutilitza `lib/recurrentsTable.ts`, pensat per a les taules de Recurrents amb columnes diferents): rèplica reduïda dels de `MovimentsList.tsx` (`cellData`/`cellConcepte`/`cellCategoria`/`cellNumeric`, sense TI/Liquidació/accions perquè un esdeveniment previst no és una fila persistida i editable).
+
+`tsc -b`/`oxlint`/`vite build` nets; 36 tests frontend sense canvis (sense test dedicat, mateix criteri que la resta de `views/`). Sense verificació clic a clic en un navegador real (no hi ha eina de navegador disponible en aquesta sessió) — el contracte de `GET /api/previsio` no ha canviat (ja verificat per HTTP a l'entrada anterior), només la seva representació a la taula.
+
 ### 2026-07-12 — Sub-fase 4.2: sortides de consulta de la previsió (frontend)
 
 Segona sub-fase de la Fase 4, sobre el motor ja implementat a la 4.1. Nova pestanya **"Previsió"** (`frontend/src/views/Previsio.tsx`), amb selector global de comptes (`ambSelector: true`, com "Panell general"/"Moviments"/"Resums" — la "selecció activa" de l'especificació 4.3 és la mateixa selecció global de tota l'app):
