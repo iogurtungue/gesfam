@@ -8,6 +8,7 @@ import { importFile, readRawTable } from './parsers/importFile.ts';
 import type { AccountType, BankId, ParsedMoviment } from './parsers/types.ts';
 import type { SuggerimentTransferencia } from './lib/internalTransfers.ts';
 import type { PeriodicitatRecurrent } from './db/types.ts';
+import { parseRecurrentsFile, type ParsedRecurrentImport } from './parsers/recurrentsFile.ts';
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -220,6 +221,31 @@ router.delete('/recurrents/:id', (req, res) => {
   try {
     ops.eliminaRecurrent(req.params.id);
     res.json({ ok: true });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+// --- Importació de compromisos confirmats (spec 4.2, sub-fase 3.2) ---
+
+router.post('/recurrents/importacio/previsualitza', upload.single('fitxer'), (req, res) => {
+  if (!req.file) {
+    res.status(400).json({ error: 'Cap fitxer rebut.' });
+    return;
+  }
+  try {
+    const table = readRawTable({ name: req.file.originalname, buffer: toArrayBuffer(req.file.buffer) });
+    const { recurrents, warnings } = parseRecurrentsFile(table);
+    res.json({ recurrents, warnings });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
+router.post('/recurrents/importacio/confirma', (req, res) => {
+  const { compteId, recurrents } = req.body as { compteId: string; recurrents: ParsedRecurrentImport[] };
+  try {
+    res.json(ops.importaRecurrents(compteId, recurrents));
   } catch (err) {
     res.status(400).json({ error: (err as Error).message });
   }

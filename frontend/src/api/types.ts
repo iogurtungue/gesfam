@@ -144,6 +144,47 @@ export interface Backup {
   regles: ReglaCategoritzacio[];
   reglesLiquidacio: ReglaLiquidacioTargeta[];
   transferenciesDescartades: SuggerimentTransferencia[];
+  recurrents: Recurrent[];
+}
+
+// --- Recurrents (especificacio.md 4.1, 4.2) ---
+
+/** `unica` = un venciment puntual, no repetitiu (p. ex. una factura de proveïdor concreta). */
+export type PeriodicitatRecurrent = 'unica' | 'setmanal' | 'mensual' | 'bimestral' | 'trimestral' | 'semestral' | 'anual';
+export type OrigenRecurrent = 'detectat' | 'manual' | 'importat';
+export type EstatRecurrent = 'confirmat' | 'ignorat';
+
+export interface Recurrent {
+  id: string;
+  compteId: string;
+  concepte: string;
+  concepteNormalitzat: string;
+  periodicitat: PeriodicitatRecurrent;
+  importCents: number;
+  dataPrevista: string;
+  categoriaId?: string;
+  referencia?: string;
+  origen: OrigenRecurrent;
+  estat: EstatRecurrent;
+}
+
+/** Una fila del fitxer de compromisos confirmats (4.2), abans de resoldre la Categoria a un id. */
+export interface ParsedRecurrentImport {
+  concepte: string;
+  importCents: number;
+  dataPrevista: string;
+  categoriaNom?: string;
+  referencia?: string;
+}
+
+export interface PrevisualitzacioRecurrentsResult {
+  recurrents: ParsedRecurrentImport[];
+  warnings: string[];
+}
+
+export interface ImportaRecurrentsResult {
+  nous: number;
+  duplicats: number;
 }
 
 export interface CommitImportResult {

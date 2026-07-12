@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import type { ParsedRecurrentImport } from '../parsers/recurrentsFile.ts';
 import type { ParsedMoviment } from '../parsers/types.ts';
 
 process.env.GESFAM_DB_PATH = ':memory:';
@@ -23,6 +24,7 @@ const {
   eliminaTotsElsMoviments,
   exportaCopiaSeguretat,
   importaCopiaSeguretat,
+  importaRecurrents,
   listCategories,
   listComptes,
   listLots,
@@ -653,5 +655,90 @@ describe('recurrents (sub-fase 3.1, especificacio.md 4.1/4.2)', () => {
     eliminaTotsElsMoviments();
 
     expect(listRecurrents()).toEqual([recurrent]);
+  });
+});
+
+describe('importaRecurrents (sub-fase 3.2, especificacio.md 4.2)', () => {
+  function factura(overrides: Partial<ParsedRecurrentImport> = {}): ParsedRecurrentImport {
+    return { concepte: 'Proveïdor XYZ SL', importCents: -125000, dataPrevista: '2026-09-15', ...overrides };
+  }
+
+  it('imports a new invoice as origen=importat, estat=confirmat, periodicitat=unica', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+
+    const { nous, duplicats } = importaRecurrents(compte.id, [factura()]);
+
+    expect(nous).toBe(1);
+    expect(duplicats).toBe(0);
+    const [recurrent] = listRecurrents();
+    expect(recurrent).toMatchObject({
+      compteId: compte.id,
+      concepte: 'Proveïdor XYZ SL',
+      importCents: -125000,
+      dataPrevista: '2026-09-15',
+      periodicitat: 'unica',
+      origen: 'importat',
+      estat: 'confirmat',
+    });
+  });
+
+  it('resolves categoriaNom to an existing categoria by case-insensitive name match', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const categoria = createCategoria('Proveïdors');
+
+    importaRecurrents(compte.id, [factura({ categoriaNom: 'proveïdors' })]);
+
+    expect(listRecurrents()[0].categoriaId).toBe(categoria.id);
+  });
+
+  it('leaves categoriaId unset when categoriaNom does not match any existing categoria', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+
+    importaRecurrents(compte.id, [factura({ categoriaNom: 'No existeix' })]);
+
+    expect(listRecurrents()[0].categoriaId).toBeUndefined();
+  });
+
+  it('preserves referencia', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+
+    importaRecurrents(compte.id, [factura({ referencia: 'FRA-2026-0042' })]);
+
+    expect(listRecurrents()[0].referencia).toBe('FRA-2026-0042');
+  });
+
+  it('re-importing the same file does not duplicate rows', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    importaRecurrents(compte.id, [factura()]);
+
+    const { nous, duplicats } = importaRecurrents(compte.id, [factura()]);
+
+    expect(nous).toBe(0);
+    expect(duplicats).toBe(1);
+    expect(listRecurrents()).toHaveLength(1);
+  });
+
+  it('keeps two coincidentally identical invoices in the same batch as separate rows', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+
+    const { nous, duplicats } = importaRecurrents(compte.id, [factura(), factura()]);
+
+    expect(nous).toBe(2);
+    expect(duplicats).toBe(0);
+    expect(listRecurrents()).toHaveLength(2);
+  });
+
+  it('throws for a compte that does not exist', () => {
+    expect(() => importaRecurrents('no-existeix', [factura()])).toThrow();
+  });
+
+  it('does not touch the database when every row is a duplicate (no-op backup)', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    importaRecurrents(compte.id, [factura()]);
+
+    const { nous, duplicats } = importaRecurrents(compte.id, [factura()]);
+
+    expect(nous).toBe(0);
+    expect(duplicats).toBe(1);
   });
 });

@@ -15,11 +15,13 @@ import type {
   ReglaLiquidacioTargeta,
 } from './types.ts';
 import { splitNousIDuplicats } from '../dedup/index.ts';
+import { splitNousRecurrentsIDuplicats } from '../dedup/recurrents.ts';
 import { pickCategoriaId } from '../lib/categorization.ts';
 import { normalizeConceptForDedup } from '../lib/concept.ts';
 import { computeContrapartidaId } from '../lib/hash.ts';
 import { suggereixTransferenciesInternes, type SuggerimentTransferencia } from '../lib/internalTransfers.ts';
 import { pickTargetaLiquidacio } from '../lib/liquidacioTargeta.ts';
+import type { ParsedRecurrentImport } from '../parsers/recurrentsFile.ts';
 import type { AccountType, BankId, ParsedMoviment } from '../parsers/types.ts';
 
 const DEFAULT_CATEGORIES = [
@@ -838,6 +840,59 @@ export function eliminaRecurrent(id: string): void {
     throw new Error('El recurrent indicat no existeix.');
   }
   getDb().prepare('DELETE FROM recurrents WHERE id = ?').run(id);
+}
+
+export interface ImportaRecurrentsResult {
+  nous: number;
+  duplicats: number;
+}
+
+/**
+ * Importa un lot de compromisos confirmats (sub-fase 3.2, especificacio.md
+ * 4.2): sempre periodicitat 'unica' (un venciment puntual, p. ex. una
+ * factura concreta) i origen 'importat', confirmats directament. Dedup amb
+ * el mateix mecanisme que els moviments bancaris (splitNousRecurrentsIDuplicats,
+ * spec 3.3): només contra ids ja existents d'una importació anterior
+ * d'aquest compte. La categoria s'assigna per nom (comparació insensible a
+ * majúscules); si no coincideix amb cap categoria existent, es queda sense.
+ */
+export function importaRecurrents(compteId: string, parsed: ParsedRecurrentImport[]): ImportaRecurrentsResult {
+  if (!existeixCompte(compteId)) {
+    throw new Error('El compte indicat no existeix.');
+  }
+
+  const db = getDb();
+  const existingIds = new Set(
+    (db.prepare('SELECT id FROM recurrents WHERE compte_id = ?').all(compteId) as { id: string }[]).map((r) => r.id),
+  );
+  const { nous, duplicats } = splitNousRecurrentsIDuplicats(compteId, parsed, existingIds);
+
+  if (nous.length > 0) {
+    backupDbFile();
+    const categoriesPerNom = new Map(listCategories().map((c) => [c.nom.toLowerCase(), c.id]));
+    transaction(db, () => {
+      const insert = db.prepare(
+        `INSERT INTO recurrents
+          (id, compte_id, concepte, concepte_normalitzat, periodicitat, import_cents, data_prevista, categoria_id, referencia, origen, estat)
+         VALUES (?, ?, ?, ?, 'unica', ?, ?, ?, ?, 'importat', 'confirmat')`,
+      );
+      for (const r of nous) {
+        const categoriaId = r.categoriaNom ? categoriesPerNom.get(r.categoriaNom.toLowerCase()) : undefined;
+        insert.run(
+          r.id,
+          compteId,
+          r.concepte,
+          normalizeConceptForDedup(r.concepte),
+          r.importCents,
+          r.dataPrevista,
+          categoriaId ?? null,
+          r.referencia ?? null,
+        );
+      }
+    });
+  }
+
+  return { nous: nous.length, duplicats };
 }
 
 // --- Còpia de seguretat (NFR secció 2) ---

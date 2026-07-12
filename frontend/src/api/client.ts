@@ -7,10 +7,15 @@ import type {
   ColumnMapping,
   CommitImportResult,
   Compte,
+  ImportaRecurrentsResult,
   ImportOutcome,
   LotImportacio,
   Moviment,
   ParsedMoviment,
+  ParsedRecurrentImport,
+  PeriodicitatRecurrent,
+  PrevisualitzacioRecurrentsResult,
+  Recurrent,
   ReglaCategoritzacio,
   ReglaLiquidacioTargeta,
   ResultatMarcaLiquidacio,
@@ -179,6 +184,38 @@ export function marcaLiquidacioTargeta(movimentId: string, targetaCompteId: stri
 
 export function desmarcaLiquidacioTargeta(movimentId: string): Promise<void> {
   return req('/liquidacions/desmarca', { method: 'POST', ...json({ movimentId }) });
+}
+
+// --- Recurrents (especificacio.md 4.1, 4.2) ---
+
+export function listRecurrents(): Promise<Recurrent[]> {
+  return req('/recurrents');
+}
+
+export function creaRecurrentManual(data: {
+  compteId: string;
+  concepte: string;
+  periodicitat: PeriodicitatRecurrent;
+  importCents: number;
+  dataPrevista: string;
+  categoriaId?: string;
+  referencia?: string;
+}): Promise<Recurrent> {
+  return req('/recurrents', { method: 'POST', ...json(data) });
+}
+
+export function eliminaRecurrent(id: string): Promise<void> {
+  return req(`/recurrents/${id}`, { method: 'DELETE' });
+}
+
+export async function previsualitzaImportacioRecurrents(file: File): Promise<PrevisualitzacioRecurrentsResult> {
+  const form = new FormData();
+  form.append('fitxer', file);
+  return req('/recurrents/importacio/previsualitza', { method: 'POST', body: form });
+}
+
+export function confirmaImportacioRecurrents(compteId: string, recurrents: ParsedRecurrentImport[]): Promise<ImportaRecurrentsResult> {
+  return req('/recurrents/importacio/confirma', { method: 'POST', ...json({ compteId, recurrents }) });
 }
 
 // --- Còpia de seguretat ---
