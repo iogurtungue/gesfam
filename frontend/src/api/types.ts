@@ -233,3 +233,26 @@ export interface BackupFileInfo {
   creatEl: string;
   midaBytes: number;
 }
+
+// --- Previsió (especificacio.md 4.3, sub-fase 4.1) ---
+
+export interface EsdevenimentPrevist {
+  data: string;
+  compteId: string;
+  concepte: string;
+  importCents: number;
+  recurrentId: string;
+  categoriaId?: string;
+}
+
+export interface PuntSerieDiaria {
+  data: string;
+  saldoPerCompte: Record<string, number>;
+  saldoTotal: number;
+}
+
+export interface Previsio {
+  saldosInicials: Record<string, number>;
+  esdeveniments: EsdevenimentPrevist[];
+  serieDiaria: PuntSerieDiaria[];
+}

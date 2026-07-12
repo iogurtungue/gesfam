@@ -10,10 +10,11 @@ import { CategoriesManager } from './views/CategoriesManager';
 import { Dashboard } from './views/Dashboard';
 import { Maintenance } from './views/Maintenance';
 import { MovimentsList } from './views/MovimentsList';
+import { Previsio } from './views/Previsio';
 import { RecurrentsManager } from './views/RecurrentsManager';
 import { Summary } from './views/Summary';
 
-type Pestanya = 'panell' | 'moviments' | 'resum' | 'categories' | 'comptes' | 'importar' | 'recurrents' | 'manteniment';
+type Pestanya = 'panell' | 'moviments' | 'resum' | 'categories' | 'comptes' | 'importar' | 'recurrents' | 'previsio' | 'manteniment';
 
 const PESTANYES: { id: Pestanya; label: string; ambSelector: boolean }[] = [
   { id: 'panell', label: 'Panell general', ambSelector: true },
@@ -23,6 +24,7 @@ const PESTANYES: { id: Pestanya; label: string; ambSelector: boolean }[] = [
   { id: 'comptes', label: 'Comptes', ambSelector: false },
   { id: 'importar', label: 'Importar', ambSelector: false },
   { id: 'recurrents', label: 'Recurrents', ambSelector: false },
+  { id: 'previsio', label: 'Previsió', ambSelector: true },
   { id: 'manteniment', label: 'Manteniment', ambSelector: false },
 ];
 
@@ -53,7 +55,7 @@ function App() {
   // import, compte, periodicitat, categoria, origen, referència...), així
   // que totes dues necessiten tot l'ample de pantalla disponible en lloc del
   // contenidor centrat i limitat a 1000px que fan servir la resta de pestanyes.
-  const amplariMaxima = pestanya === 'moviments' || pestanya === 'recurrents' ? 'none' : 1000;
+  const amplariMaxima = pestanya === 'moviments' || pestanya === 'recurrents' || pestanya === 'previsio' ? 'none' : 1000;
 
   return (
     <div style={{ maxWidth: amplariMaxima, margin: '0 auto', padding: 16, fontFamily: 'sans-serif' }}>
@@ -100,6 +102,7 @@ function App() {
         </>
       )}
       {pestanya === 'recurrents' && <RecurrentsManager comptes={comptes} categories={categories} />}
+      {pestanya === 'previsio' && <Previsio seleccionats={seleccio.seleccionats} categories={categories} />}
       {pestanya === 'manteniment' && <Maintenance onReset={refresh} />}
     </div>
   );

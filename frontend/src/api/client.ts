@@ -16,6 +16,7 @@ import type {
   ParsedMoviment,
   ParsedRecurrentImport,
   PeriodicitatRecurrent,
+  Previsio,
   PrevisualitzacioRecurrentsResult,
   Recurrent,
   ReglaCategoritzacio,
@@ -240,6 +241,13 @@ export function confirmaCandidatRecurrent(data: DadesRecurrent): Promise<Recurre
 
 export function ignoraCandidatRecurrent(data: DadesRecurrent): Promise<Recurrent> {
   return req('/recurrents/candidats/ignora', { method: 'POST', ...json(data) });
+}
+
+// --- Previsió (especificacio.md 4.3, sub-fase 4.1) ---
+
+export function calculaPrevisio(compteIds: string[], horitzoDies: number): Promise<Previsio> {
+  if (compteIds.length === 0) return Promise.resolve({ saldosInicials: {}, esdeveniments: [], serieDiaria: [] });
+  return req(`/previsio?compteIds=${compteIds.map(encodeURIComponent).join(',')}&horitzoDies=${horitzoDies}`);
 }
 
 // --- Còpia de seguretat ---
