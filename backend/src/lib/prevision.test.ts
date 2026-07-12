@@ -40,11 +40,63 @@ describe('projectaEsdeveniments', () => {
     expect(esdeveniments.map((e) => e.data)).toEqual(['2026-07-20']);
   });
 
-  it('silently fast-forwards a stale dataPrevista to the first future occurrence, without projecting past ones', () => {
-    // dataPrevista left over from months ago (no automatic advance elsewhere in the app).
-    const esdeveniments = projectaEsdeveniments([recurrent({ dataPrevista: '2026-01-15' })], [], 30, AVUI);
+  it('silently fast-forwards a stale dataPrevista to the first future occurrence, without projecting past ones, when the last one was conciliated', () => {
+    // dataPrevista left over from months ago (no automatic advance elsewhere in the app);
+    // the last past occurrence (2026-06-15) has a matching real movement, so it's resolved silently.
+    const moviments: MovimentPerConciliacio[] = [{ compteId: 'compte-1', dataOperacio: '2026-06-15', importCents: -5000 }];
+    const esdeveniments = projectaEsdeveniments([recurrent({ dataPrevista: '2026-01-15' })], moviments, 30, AVUI);
 
     expect(esdeveniments.map((e) => e.data)).toEqual(['2026-07-15']);
+    expect(esdeveniments[0].vençut).toBeUndefined();
+  });
+
+  it('flags the most recent unconciliated past occurrence of a periodic recurrent as vençut, without stopping future projection', () => {
+    // Same stale dataPrevista, but this time nothing conciliates the 2026-06-15 occurrence.
+    const esdeveniments = projectaEsdeveniments([recurrent({ dataPrevista: '2026-01-15' })], [], 30, AVUI);
+
+    expect(esdeveniments).toEqual([
+      { data: '2026-07-15', compteId: 'compte-1', concepte: 'CONCEPTE', importCents: -5000, recurrentId: 'r1' },
+      {
+        data: '2026-07-22',
+        compteId: 'compte-1',
+        concepte: 'CONCEPTE',
+        importCents: -5000,
+        recurrentId: 'r1',
+        vençut: true,
+        dataPrevistaOriginal: '2026-06-15',
+      },
+    ]);
+  });
+
+  it('does not flag anything as vençut for a periodic recurrent whose dataPrevista is not stale', () => {
+    const esdeveniments = projectaEsdeveniments([recurrent()], [], 60, AVUI);
+
+    expect(esdeveniments.every((e) => !e.vençut)).toBe(true);
+  });
+
+  it('resolves a vençut periodic occurrence against a real movement more than 3 (but at most 30) days after the due date', () => {
+    // The occurrence was due 2026-06-15; the real payment arrived 10 days late, well beyond the strict ±3-day window.
+    const moviments: MovimentPerConciliacio[] = [{ compteId: 'compte-1', dataOperacio: '2026-06-25', importCents: -5000 }];
+    const esdeveniments = projectaEsdeveniments([recurrent({ dataPrevista: '2026-01-15' })], moviments, 30, AVUI);
+
+    expect(esdeveniments.map((e) => e.data)).toEqual(['2026-07-15']);
+    expect(esdeveniments[0].vençut).toBeUndefined();
+  });
+
+  it('does not resolve a vençut occurrence against a real movement more than 30 days after the due date', () => {
+    const moviments: MovimentPerConciliacio[] = [{ compteId: 'compte-1', dataOperacio: '2026-07-20', importCents: -5000 }];
+    const esdeveniments = projectaEsdeveniments([recurrent({ dataPrevista: '2026-01-15' })], moviments, 30, AVUI);
+
+    const vencut = esdeveniments.find((e) => e.vençut);
+    expect(vencut).toMatchObject({ dataPrevistaOriginal: '2026-06-15' });
+  });
+
+  it('does not resolve a vençut occurrence against a real movement before the due date', () => {
+    const moviments: MovimentPerConciliacio[] = [{ compteId: 'compte-1', dataOperacio: '2026-06-10', importCents: -5000 }];
+    const esdeveniments = projectaEsdeveniments([recurrent({ dataPrevista: '2026-01-15' })], moviments, 30, AVUI);
+
+    const vencut = esdeveniments.find((e) => e.vençut);
+    expect(vencut).toMatchObject({ dataPrevistaOriginal: '2026-06-15' });
   });
 
   it('skips an occurrence already conciliated by a similar real movement within a few days', () => {

@@ -295,7 +295,11 @@ export function Previsio({ seleccionats, categories }: Props) {
                       <button onClick={() => (editant === e.recurrentId ? tancaEdicio() : obreEdicio(e.recurrentId))} title="Edita">
                         Edita
                       </button>{' '}
-                      <button onClick={() => handleElimina(e.recurrentId, e.data)} disabled={eliminant === e.recurrentId} title="Eliminar">
+                      <button
+                        onClick={() => handleElimina(e.recurrentId, e.dataPrevistaOriginal ?? e.data)}
+                        disabled={eliminant === e.recurrentId}
+                        title="Eliminar"
+                      >
                         X
                       </button>
                     </td>

@@ -27,7 +27,7 @@ export interface EsdevenimentPrevist {
   recurrentId: string;
   categoriaId?: string;
   esTransferenciaInterna?: boolean;
-  /** Només per a `unica`: la `dataPrevista` original ja havia passat (i encara no s'ha conciliat) quan es va calcular la previsió, així que es mostra desplaçat (`DIES_DESPLACAMENT_VENCUT`) en lloc de desaparèixer sense avís. */
+  /** L'ocurrència prevista a `dataPrevistaOriginal` ja havia passat (i encara no s'ha conciliat) quan es va calcular la previsió, així que es mostra desplaçada (`DIES_DESPLACAMENT_VENCUT`) en lloc de desaparèixer sense avís. Tant per a `unica` com per a l'ocurrència més recent d'un recurrent periòdic. */
   vençut?: boolean;
   /** Només quan `vençut`: la data de venciment original (abans de desplaçar-la), per mostrar-la a la UI. */
   dataPrevistaOriginal?: string;
@@ -42,8 +42,10 @@ export interface PuntSerieDiaria {
 /** "Pocs dies" (especificacio.md 4.2, sub-fase 3.6): finestra al voltant de la data prevista dins la qual un moviment real ja importat es considera la liquidació d'aquell recurrent. */
 const FINESTRA_CONCILIACIO_DIES = 3;
 const TOLERANCIA_IMPORT_CONCILIACIO = 0.15;
-/** Un compromís puntual (`unica`) vençut i encara no conciliat es mostra desplaçat aquests dies respecte a avui (no exactament avui), perquè quedi clarament identificat com a pendent sense amuntegar-se tot a la data d'avui. */
+/** Un compromís vençut (unica o l'ocurrència més recent d'un periòdic) i encara no conciliat es mostra desplaçat aquests dies respecte a avui (no exactament avui), perquè quedi clarament identificat com a pendent sense amuntegar-se tot a la data d'avui. */
 const DIES_DESPLACAMENT_VENCUT = 10;
+/** Un cop una ocurrència ja es considera vençuda, la finestra de conciliació estricta (±3 dies) deixa de ser realista: el pagament real pot arribar amb més retard. Es dona per resolta si hi ha un moviment real semblant en qualsevol data entre el venciment original i aquests dies després — sense límit, un import similar mesos després podria ser pura coincidència. */
+const FINESTRA_RESOLUCIO_VENCUT_DIES = 30;
 
 function esConciliat(compteId: string, data: string, importCents: number, moviments: MovimentPerConciliacio[]): boolean {
   const marge = Math.abs(importCents) * TOLERANCIA_IMPORT_CONCILIACIO;
@@ -52,6 +54,19 @@ function esConciliat(compteId: string, data: string, importCents: number, movime
       m.compteId === compteId &&
       Math.sign(m.importCents) === Math.sign(importCents) &&
       Math.abs(diesEntre(data, m.dataOperacio)) <= FINESTRA_CONCILIACIO_DIES &&
+      Math.abs(Math.abs(m.importCents) - Math.abs(importCents)) <= marge,
+  );
+}
+
+/** Com `esConciliat`, però per a una ocurrència ja vençuda: només compta un moviment real des de la data de venciment original endavant (mai abans, ja l'hauria detectat `esConciliat` quan encara no era vençuda), amb una finestra més àmplia (`FINESTRA_RESOLUCIO_VENCUT_DIES`) perquè un pagament amb més de 3 dies de retard es reconegui igualment. */
+function esConciliatVencut(compteId: string, dataOcurrencia: string, importCents: number, moviments: MovimentPerConciliacio[]): boolean {
+  const marge = Math.abs(importCents) * TOLERANCIA_IMPORT_CONCILIACIO;
+  return moviments.some(
+    (m) =>
+      m.compteId === compteId &&
+      Math.sign(m.importCents) === Math.sign(importCents) &&
+      diesEntre(dataOcurrencia, m.dataOperacio) >= 0 &&
+      diesEntre(dataOcurrencia, m.dataOperacio) <= FINESTRA_RESOLUCIO_VENCUT_DIES &&
       Math.abs(Math.abs(m.importCents) - Math.abs(importCents)) <= marge,
   );
 }
@@ -74,19 +89,46 @@ export function avancaPeriodicitat(data: string, periodicitat: Exclude<Periodici
   }
 }
 
+function esdevenimentVencut(r: RecurrentPerProjeccio, dataOriginal: string, avui: string): EsdevenimentPrevist {
+  return {
+    data: afegeixDies(avui, DIES_DESPLACAMENT_VENCUT),
+    compteId: r.compteId,
+    concepte: r.concepte,
+    importCents: r.importCents,
+    recurrentId: r.id,
+    categoriaId: r.categoriaId,
+    esTransferenciaInterna: r.esTransferenciaInterna,
+    vençut: true,
+    dataPrevistaOriginal: dataOriginal,
+  };
+}
+
 /**
  * Motor de projecció (especificacio.md 4.3, sub-fase 4.1): calcula, per a cada
  * recurrent confirmat, quines ocurrències futures (avui inclòs) cauen dins
  * l'horitzó, aplicant la conciliació (3.6) — si ja hi ha un moviment real
- * semblant a prop de la data prevista, no es projecta. Per a un recurrent
- * periòdic amb `dataPrevista` desfasada, s'avança silenciosament (sense
- * comprovar conciliació de les ocurrències saltades) fins a la primera
- * ocurrència que ja no sigui anterior a avui. Un compromís puntual (`unica`)
- * amb `dataPrevista` passada i encara no conciliat, en canvi, no desapareix:
- * es projecta desplaçat `DIES_DESPLACAMENT_VENCUT` dies després d'avui,
- * marcat `vençut: true` (amb `dataPrevistaOriginal` per mostrar el venciment
- * real) perquè es pugui distingir a la UI d'un venciment que realment cau
- * en aquella data. Pura funció — no llegeix ni escriu la base de dades.
+ * semblant a prop de la data prevista, no es projecta.
+ *
+ * Un compromís puntual (`unica`) amb `dataPrevista` passada i encara no
+ * conciliat no desapareix: es projecta desplaçat `DIES_DESPLACAMENT_VENCUT`
+ * dies després d'avui, marcat `vençut: true` (amb `dataPrevistaOriginal` per
+ * mostrar el venciment real).
+ *
+ * Un recurrent **periòdic** amb `dataPrevista` desfasada avança silenciosament
+ * (sense comprovar conciliació) totes les ocurrències anteriors a l'última
+ * abans d'avui — però aquesta última sí que es comprova: si tampoc s'ha
+ * conciliat, es projecta igualment com a "vençuda" (mateix tractament que un
+ * `unica`), sense interrompre la projecció normal de les properes ocurrències
+ * futures. Només es vigila l'ocurrència més recent (mai totes les passades),
+ * perquè un recurrent abandonat fa mesos no ompli la previsió d'avisos.
+ *
+ * Un cop una ocurrència és vençuda, la conciliació que la pot resoldre fa
+ * servir una finestra més àmplia (`esConciliatVencut`, `FINESTRA_RESOLUCIO_VENCUT_DIES`
+ * dies des del venciment original) en lloc de la finestra estricta (±3 dies)
+ * — un pagament vençut pot arribar amb més retard del que es considera normal
+ * per a un pagament puntual.
+ *
+ * Pura funció — no llegeix ni escriu la base de dades.
  */
 export function projectaEsdeveniments(
   recurrents: RecurrentPerProjeccio[],
@@ -101,27 +143,53 @@ export function projectaEsdeveniments(
     if (r.periodicitat === 'unica') {
       if (r.dataPrevista > dataLimit) continue;
       const vençut = r.dataPrevista < avui;
-      const data = vençut ? afegeixDies(avui, DIES_DESPLACAMENT_VENCUT) : r.dataPrevista;
-      if (r.dataFi && data > r.dataFi) continue;
+      if (vençut) {
+        if (esConciliatVencut(r.compteId, r.dataPrevista, r.importCents, movimentsPerConciliacio)) continue;
+        const esdeveniment = esdevenimentVencut(r, r.dataPrevista, avui);
+        if (r.dataFi && esdeveniment.data > r.dataFi) continue;
+        esdeveniments.push(esdeveniment);
+        continue;
+      }
+      if (r.dataFi && r.dataPrevista > r.dataFi) continue;
       if (esConciliat(r.compteId, r.dataPrevista, r.importCents, movimentsPerConciliacio)) continue;
       esdeveniments.push({
-        data,
+        data: r.dataPrevista,
         compteId: r.compteId,
         concepte: r.concepte,
         importCents: r.importCents,
         recurrentId: r.id,
         categoriaId: r.categoriaId,
         esTransferenciaInterna: r.esTransferenciaInterna,
-        ...(vençut && { vençut: true, dataPrevistaOriginal: r.dataPrevista }),
       });
       continue;
     }
 
     let data = r.dataPrevista;
+    let ultimaOcurrenciaPassada: string | undefined;
+    let finalitzat = false;
+
+    while (data < avui) {
+      if (r.dataFi && data > r.dataFi) {
+        finalitzat = true;
+        break;
+      }
+      ultimaOcurrenciaPassada = data;
+      data = avancaPeriodicitat(data, r.periodicitat);
+    }
+
+    if (!finalitzat && ultimaOcurrenciaPassada && !esConciliatVencut(r.compteId, ultimaOcurrenciaPassada, r.importCents, movimentsPerConciliacio)) {
+      const esdeveniment = esdevenimentVencut(r, ultimaOcurrenciaPassada, avui);
+      if (!(r.dataFi && esdeveniment.data > r.dataFi)) {
+        esdeveniments.push(esdeveniment);
+      }
+    }
+
+    if (finalitzat) continue;
+
     while (data <= dataLimit) {
       if (r.dataFi && data > r.dataFi) break;
 
-      if (data >= avui && !esConciliat(r.compteId, data, r.importCents, movimentsPerConciliacio)) {
+      if (!esConciliat(r.compteId, data, r.importCents, movimentsPerConciliacio)) {
         esdeveniments.push({
           data,
           compteId: r.compteId,
