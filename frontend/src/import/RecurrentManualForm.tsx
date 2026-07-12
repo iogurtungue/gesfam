@@ -13,6 +13,7 @@ import {
   cellReferencia,
   cellStyle,
   cellPeriodicitat,
+  cellTI,
   inputCompletCella,
 } from '../lib/recurrentsTable';
 
@@ -33,6 +34,7 @@ export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
   const [dataFi, setDataFi] = useState('');
   const [categoriaId, setCategoriaId] = useState('');
   const [referencia, setReferencia] = useState('');
+  const [esTransferenciaInterna, setEsTransferenciaInterna] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -55,6 +57,7 @@ export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
         dataFi: dataFi || undefined,
         categoriaId: categoriaId || undefined,
         referencia: referencia.trim() || undefined,
+        esTransferenciaInterna,
       });
       setConcepte('');
       setImportEuros('');
@@ -62,6 +65,7 @@ export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
       setDataPrevista('');
       setDataFi('');
       setReferencia('');
+      setEsTransferenciaInterna(false);
       onChanged();
     } catch (err) {
       setError((err as Error).message);
@@ -73,9 +77,7 @@ export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
   return (
     <section style={{ marginTop: 24 }}>
       <h2>Afegir un recurrent manualment</h2>
-      <p style={{ fontSize: 12, color: '#555' }}>
-        Per a un recurrent que el motor de detecció encara no ha vist (p. ex. un rebut anual amb una sola ocurrència a l'històric).
-      </p>
+      <p style={{ fontSize: 12, color: '#555' }}>Compromís periòdic o puntual, p. ex. un rebut anual o una subscripció.</p>
       <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
         <thead>
           <tr>
@@ -86,6 +88,7 @@ export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
             <th style={{ ...cellStyle, ...cellConcepte }}>Concepte</th>
             <th style={{ ...cellStyle, ...cellImport }}>Import</th>
             <th style={{ ...cellStyle, ...cellCategoria }}>Categoria</th>
+            <th style={{ ...cellStyle, ...cellTI }}>TI</th>
             <th style={{ ...cellStyle, ...cellOrigen }}>Origen</th>
             <th style={{ ...cellStyle, ...cellReferencia }}>Referència</th>
             <th style={{ ...cellStyle, ...cellAccions }}></th>
@@ -135,6 +138,9 @@ export function RecurrentManualForm({ comptes, categories, onChanged }: Props) {
                   </option>
                 ))}
               </select>
+            </td>
+            <td style={{ ...cellStyle, ...cellTI }}>
+              <input type="checkbox" checked={esTransferenciaInterna} onChange={(e) => setEsTransferenciaInterna(e.target.checked)} />
             </td>
             <td style={{ ...cellStyle, ...cellOrigen }}>Manual</td>
             <td style={{ ...cellStyle, ...cellReferencia }}>

@@ -94,6 +94,8 @@ Els recurrents (compromisos periòdics o puntuals) només es donen d'alta de due
 
 Un cop creat (per qualsevol dels dos camins), el recurrent és directament **confirmat**: l'usuari ja n'ha decidit conscientment l'import i la data, no cal cap pas de revisió previ.
 
+Un recurrent es pot marcar com a **transferència interna** (mateix concepte que als moviments reals) per poder-lo filtrar; la pantalla de gestió permet filtrar la llista per compte, periodicitat i categoria.
+
 > **Nota històrica**: una primera versió d'aquesta funcionalitat (sub-fases 3.3 «motor de detecció de periodicitat» i 3.5 «estimació agregada de targeta») detectava automàticament patrons de repetició sobre l'històric real i suggeria candidats a confirmar/ignorar. Es va **eliminar completament** a petició explícita de l'usuari: només es vol donar d'alta un recurrent manualment o per importació, mai per inferència sobre moviments passats (vegeu `ESTAT.md` per al detall de la implementació original i de la decisió de reversió). Els recurrents que ja s'havien confirmat a partir d'un candidat detectat en aquella època es mantenen intactes — `origen='detectat'` és ara només una etiqueta històrica, cap camí de codi actual en genera de nous.
 
 ### 4.2 Compromisos confirmats (importació de factures amb venciment conegut)
@@ -122,7 +124,7 @@ Alguns imports i dates ja es coneixen amb certesa abans que el moviment aparegui
 - Punt de partida: saldo consolidat actual (i per compte).
 - Projecció dia a dia fins a l'horitzó triat (30 / 60 / 90 dies, i camp lliure): a cada data prevista d'un recurrent confirmat, aplicar-ne l'import estimat.
 - **Despesa no recurrent (banda d'incertesa)**: **ajornada** — no es fa a la v1 d'aquesta fase; la projecció es basa només en els recurrents confirmats. Es podrà afegir més endavant sense canviar el disseny base del motor.
-- **Sortides**: gràfic de saldo projectat (línia de saldo cert-a-avui + projecció), taula cronològica dels moviments previstos, i **alertes**: dates en què el saldo projectat baixa d'un llindar configurable o es fa negatiu — **llindar global** (sobre el saldo total de la selecció activa) **i llindar per compte** (cadascun amb el seu propi valor opcional).
+- **Sortides**: gràfic de saldo projectat (línia de saldo cert-a-avui + projecció), taula cronològica dels moviments previstos amb els mateixos filtres que la pestanya de Moviments (categoria, tipus ingrés/càrrec, transferència interna, cerca de text), i **alertes**: dates en què el saldo projectat baixa d'un llindar configurable o es fa negatiu — **llindar global** (sobre el saldo total de la selecció activa) **i llindar per compte** (cadascun amb el seu propi valor opcional).
 - **Simulació manual** (desitjable, fase 2): afegir moviments hipotètics puntuals («i si pago 3.000 € el dia 15?») i veure l'efecte sobre la corba.
 
 ## 5. Fora d'abast (v1)

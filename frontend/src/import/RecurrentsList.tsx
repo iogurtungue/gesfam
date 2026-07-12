@@ -15,6 +15,7 @@ import {
   cellReferencia,
   cellStyle,
   cellPeriodicitat,
+  cellTI,
   inputCompletCella,
 } from '../lib/recurrentsTable';
 
@@ -55,8 +56,16 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
   const [editant, setEditant] = useState<string | null>(null);
   const [esborrany, setEsborrany] = useState<EsborranyEdicio | null>(null);
   const [desant, setDesant] = useState(false);
+  const [filtreCompteId, setFiltreCompteId] = useState('');
+  const [filtrePeriodicitat, setFiltrePeriodicitat] = useState<PeriodicitatRecurrent | ''>('');
+  const [filtreCategoriaId, setFiltreCategoriaId] = useState('');
   const compteAlias = new Map(comptes.map((c) => [c.id, c.alias]));
   const categoriaNom = new Map(categories.map((c) => [c.id, c.nom]));
+
+  async function handleTransferenciaChange(id: string, value: boolean) {
+    await actualitzaRecurrent(id, { esTransferenciaInterna: value });
+    onChanged();
+  }
 
   async function handleElimina(id: string) {
     if (!confirm('Eliminar aquest recurrent?')) return;
@@ -106,7 +115,14 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
     );
   }
 
-  const ordenats = [...recurrents].sort(
+  const filtrats = recurrents.filter(
+    (r) =>
+      (!filtreCompteId || r.compteId === filtreCompteId) &&
+      (!filtrePeriodicitat || r.periodicitat === filtrePeriodicitat) &&
+      (!filtreCategoriaId || r.categoriaId === filtreCategoriaId),
+  );
+
+  const ordenats = [...filtrats].sort(
     (a, b) =>
       (compteAlias.get(a.compteId) ?? a.compteId).localeCompare(compteAlias.get(b.compteId) ?? b.compteId) ||
       a.dataPrevista.localeCompare(b.dataPrevista),
@@ -115,6 +131,46 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
   return (
     <section style={{ marginTop: 24 }}>
       <h2>Recurrents confirmats</h2>
+
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+        <label>
+          Compte:{' '}
+          <select value={filtreCompteId} onChange={(e) => setFiltreCompteId(e.target.value)}>
+            <option value="">-- Tots --</option>
+            {comptes.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.alias}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Periodicitat:{' '}
+          <select value={filtrePeriodicitat} onChange={(e) => setFiltrePeriodicitat(e.target.value as PeriodicitatRecurrent | '')}>
+            <option value="">-- Totes --</option>
+            {TOTES_LES_PERIODICITATS.map((p) => (
+              <option key={p} value={p}>
+                {PERIODICITAT_LABEL[p]}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Categoria:{' '}
+          <select value={filtreCategoriaId} onChange={(e) => setFiltreCategoriaId(e.target.value)}>
+            <option value="">-- Totes --</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nom}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+
+      {ordenats.length === 0 ? (
+        <p style={{ fontSize: 12, color: '#555' }}>Cap recurrent coincideix amb els filtres.</p>
+      ) : (
       <table style={{ borderCollapse: 'collapse', fontSize: 12, width: '100%' }}>
         <thead>
           <tr>
@@ -125,6 +181,7 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
             <th style={{ ...cellStyle, ...cellConcepte }}>Concepte</th>
             <th style={{ ...cellStyle, ...cellImport }}>Import</th>
             <th style={{ ...cellStyle, ...cellCategoria }}>Categoria</th>
+            <th style={{ ...cellStyle, ...cellTI }}>TI</th>
             <th style={{ ...cellStyle, ...cellOrigen }}>Origen</th>
             <th style={{ ...cellStyle, ...cellReferencia }}>Referència</th>
             <th style={{ ...cellStyle, ...cellAccions }}></th>
@@ -183,6 +240,13 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
                     ))}
                   </select>
                 </td>
+                <td style={{ ...cellStyle, ...cellTI }}>
+                  <input
+                    type="checkbox"
+                    checked={r.esTransferenciaInterna ?? false}
+                    onChange={(e) => handleTransferenciaChange(r.id, e.target.checked)}
+                  />
+                </td>
                 <td style={{ ...cellStyle, ...cellOrigen }}>{r.origen}</td>
                 <td style={{ ...cellStyle, ...cellReferencia }}>
                   <input value={esborrany.referencia} onChange={(e) => setEsborrany({ ...esborrany, referencia: e.target.value })} style={inputCompletCella} />
@@ -208,6 +272,13 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
                   {centsToEs(r.importCents, false)}
                 </td>
                 <td style={{ ...cellStyle, ...cellCategoria }}>{r.categoriaId ? (categoriaNom.get(r.categoriaId) ?? '—') : '—'}</td>
+                <td style={{ ...cellStyle, ...cellTI }}>
+                  <input
+                    type="checkbox"
+                    checked={r.esTransferenciaInterna ?? false}
+                    onChange={(e) => handleTransferenciaChange(r.id, e.target.checked)}
+                  />
+                </td>
                 <td style={{ ...cellStyle, ...cellOrigen }}>{r.origen}</td>
                 <td style={{ ...cellStyle, ...cellReferencia }}>{r.referencia ?? '—'}</td>
                 <td style={{ ...cellStyle, ...cellAccions }}>
@@ -223,6 +294,7 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
           )}
         </tbody>
       </table>
+      )}
     </section>
   );
 }

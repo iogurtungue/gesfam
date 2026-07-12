@@ -40,6 +40,10 @@ backend/src/
                002_comptes_ordre_grup.sql   Afegeix `ordre`/`grup` a comptes
                003_liquidacio_targeta.sql   Afegeix `es_liquidacio_targeta_id`/`moviment_origen_id`
                                             a moviments i la taula `regles_liquidacio`
+               004-006 (transferències descartades, model de recurrents, aproximat/data_fi)
+               007_recurrents_transferencia_interna.sql   Afegeix `es_transferencia_interna`
+                                                           a `recurrents` (mateix concepte que a
+                                                           `moviments`, per poder-lo filtrar)
     client.ts        getDb() — obre/crea dades/finances.db (node:sqlite DatabaseSync), aplica
                       migracions pendents (versionades per nom de fitxer, taula _migrations),
                       WAL mode. DB_PATH/DADES_DIR overridables per GESFAM_DB_PATH/GESFAM_DADES_DIR
@@ -93,9 +97,10 @@ frontend/src/
   views/            Dashboard.tsx, MovimentsList.tsx, Summary.tsx, CategoriesManager.tsx,
                     AccountsManager.tsx, Maintenance.tsx (inclou la còpia de seguretat JSON i les
                     còpies automàtiques del `.db`; no hi ha pestanyes separades per a cap de les dues),
-                    Previsio.tsx (pestanya "Previsió", especificacio.md 4.3, sub-fase 4.2: selector
-                    d'horitzó 30/60/90/lliure, gràfic de saldo projectat via recharts i taula
-                    cronològica dels moviments previstos, cridant `GET /api/previsio`)
+                    Previsio.tsx (pestanya "Previsió", ubicada després de "Moviments"; especificacio.md
+                    4.3, sub-fase 4.2: selector d'horitzó 30/60/90/lliure, gràfic de saldo projectat
+                    via recharts i taula cronològica dels moviments previstos amb els mateixos filtres
+                    que Moviments — categoria/tipus/TI/text —, cridant `GET /api/previsio`)
   import/           ImportWizard.tsx (puja fitxers via FormData a /api/importacio/*),
                     ManualMapping.tsx, LotsList.tsx
   App.tsx           Navegació per pestanyes + estat global (comptes/lots/categories/regles)
@@ -122,7 +127,7 @@ frontend/src/
 
 ### Estat de les proves
 
-Backend: 185 tests (Vitest) — parsers (inclou `recurrentsFile.ts`, el parser del format fix de compromisos), dedup (inclou `dedup/recurrents.ts`), `lib/` (inclou `liquidacioTargeta.ts`, `computeContrapartidaId`, `computeRecurrentHash`, `dates.ts` — `afegeixDies`/`afegeixMesos`/`diesEntre`/`isoAvui`, reutilitzats pel motor de previsió —, i el motor de previsió `prevision.ts`: `projectaEsdeveniments`/`construeixSerieDiaria`), `db/operations.ts` contra SQLite en memòria (`GESFAM_DB_PATH=':memory:'`, inclou el mecanisme de liquidació de targeta: marcatge, quadratura, idempotència, cascada via `undoLot`; i el model de recurrents: creació manual, validacions, eliminació, importació amb dedup i resolució de categoria, còpia de seguretat, manteniment), `db/client.ts` (migracions) i `db/backupFile.ts` (còpia + retenció). Frontend: 36 tests — `lib/balance.ts`, `lib/summary.ts`, `lib/dates.ts` (inclou `faDiesAbans`), `lib/numbers.ts` (només lògica de visualització; els components de vista, inclosos els de recurrents i ara `views/Previsio.tsx` — no tenen tests propis: es verifiquen manualment/via HTTP, seguint el mateix criteri que la resta de `views/`/`import/`). `npx tsc -b` net a totes dues bandes, `npm run build` (frontend) i `oxlint` (frontend) nets.
+Backend: 188 tests (Vitest) — parsers (inclou `recurrentsFile.ts`, el parser del format fix de compromisos), dedup (inclou `dedup/recurrents.ts`), `lib/` (inclou `liquidacioTargeta.ts`, `computeContrapartidaId`, `computeRecurrentHash`, `dates.ts` — `afegeixDies`/`afegeixMesos`/`diesEntre`/`isoAvui`, reutilitzats pel motor de previsió —, i el motor de previsió `prevision.ts`: `projectaEsdeveniments`/`construeixSerieDiaria`), `db/operations.ts` contra SQLite en memòria (`GESFAM_DB_PATH=':memory:'`, inclou el mecanisme de liquidació de targeta: marcatge, quadratura, idempotència, cascada via `undoLot`; i el model de recurrents: creació manual, validacions, eliminació, importació amb dedup i resolució de categoria, còpia de seguretat, manteniment), `db/client.ts` (migracions) i `db/backupFile.ts` (còpia + retenció). Frontend: 36 tests — `lib/balance.ts`, `lib/summary.ts`, `lib/dates.ts` (inclou `faDiesAbans`), `lib/numbers.ts` (només lògica de visualització; els components de vista, inclosos els de recurrents i ara `views/Previsio.tsx` — no tenen tests propis: es verifiquen manualment/via HTTP, seguint el mateix criteri que la resta de `views/`/`import/`). `npx tsc -b` net a totes dues bandes, `npm run build` (frontend) i `oxlint` (frontend) nets.
 
 Verificació addicional (no automatitzada, feta manualment durant la migració d'arquitectura, vegeu historial): migració de la còpia de seguretat JSON real de l'usuari (4 comptes, 266 moviments, 4 lots, 23 categories, 15 regles) a SQLite amb comparació camp a camp — 0 diferències reals; arrencada de `npm start` real contra `dades/finances.db` migrat, import/undo/eliminar compte de prova via HTTP (confirmant que `backupDbFile()` es dispara), i reinici del servidor confirmant que les dades hi són intactes.
 
@@ -137,6 +142,27 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Un recurrent ja confirmat amb `dataPrevista` passada no s'actualitza automàticament a la seva pròpia fila**: l'usuari l'ha de corregir a mà des de l'edició in-line si vol que `dataPrevista` reflecteixi la realitat. El motor de previsió (Fase 4, 4.1) ja ho gestiona sense necessitat d'aquesta correcció manual: per a un periòdic avança silenciosament fins la primera ocurrència futura, i per a un `unica` vençut i encara no conciliat, el projecta avui mateix marcat `vençut: true` (vegeu entrada d'historial corresponent) en lloc de desaparèixer o quedar-se enrere.
 - **Fase 5 (opcional)**: simulacions manuals, despesa difusa, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
+
+### 2026-07-12 — Filtres a Recurrents i Previsió, camp TI a Recurrent, Previsió reubicada
+
+L'usuari ha demanat: (1) a la pestanya Recurrents, poder filtrar per Compte/Periodicitat/Categoria i poder marcar un recurrent com a Transferència Interna (TI); (2) a la pestanya Previsió, ubicar-la després de "Moviments" i que tingui els mateixos filtres que Moviments.
+
+**Nou camp `Recurrent.esTransferenciaInterna`** (mateix concepte que `Moviment.esTransferenciaInterna`):
+- `db/migrations/007_recurrents_transferencia_interna.sql`: `ALTER TABLE recurrents ADD COLUMN es_transferencia_interna INTEGER NOT NULL DEFAULT 0`.
+- `db/types.ts`/`operations.ts`: nou camp opcional al tipus `Recurrent` i a `DadesRecurrent`; `inserirRecurrent` l'accepta (per defecte `false`); `actualitzaRecurrent` el pot commutar.
+- `lib/prevision.ts`: `RecurrentPerProjeccio`/`EsdevenimentPrevist` porten ara `esTransferenciaInterna`, propagat des del `Recurrent` a cada esdeveniment projectat (no afecta cap càlcul de saldo, és purament informatiu/filtrable — el diner encara s'ha de projectar igual al compte, marcar-lo com a TI només ajuda a distingir-lo visualment i a filtrar-lo).
+
+**Pestanya Recurrents** (`RecurrentsList.tsx`): nova barra de filtres (Compte, Periodicitat, Categoria, cadascun amb desplegable "-- Tots/es --"); nova columna "TI" amb casella de commutació immediata (mateix patró que la columna TI de Moviments: `actualitzaRecurrent(id, { esTransferenciaInterna })` directe, sense passar per l'edició in-line d'altres camps). `RecurrentManualForm.tsx` també hi afegeix la casella TI en crear un recurrent nou. Aprofitat per netejar un text obsolet ("el motor de detecció encara no ha vist") que havia quedat de l'entrada anterior.
+
+**Pestanya Previsió**:
+- `App.tsx`: reordenada perquè aparegui immediatament després de "Moviments" (abans anava després de "Recurrents").
+- `views/Previsio.tsx`: nova barra de filtres — Categoria, Tipus (ingrés/càrrec), TI (totes/només/exclou), Text (cerca al concepte) — mateixos noms i valors que `MovimentsList.tsx`. Decisió pròpia sense preguntar: **no** es repliquen els filtres de data (Interval/Des de/Fins a) de Moviments, ja que el selector d'horitzó (30/60/90/lliure) ja compleix aquest paper específicament per a la previsió (limitar la finestra de dies a mostrar); si l'usuari els vol també, cal dir-ho. Els filtres només amaguen files de la taula — el saldo mostrat a cada fila es calcula sempre sobre el conjunt complet d'esdeveniments (mateix criteri que `MovimentsList`, on el saldo és sempre el real acumulat, independent de quins moviments queden visibles després de filtrar).
+
+Tests: 3 nous a backend (`esTransferenciaInterna` per defecte fals i creable directament, `actualitzaRecurrent` el commuta, propagació a `EsdevenimentPrevist`) — 188 tests backend en total. `tsc -b`/`oxlint`/`vite build` nets a totes dues bandes; 36 tests frontend sense canvis.
+
+Validat contra l'històric real (només lectura, còpia temporal esborrada en acabar): la migració 007 s'aplica automàticament i neta sobre l'esquema real existent (comprovat via `PRAGMA table_info`), tots els recurrents existents queden amb `esTransferenciaInterna=false` per defecte, i marcar-ne un i tornar a calcular la previsió confirma que el camp es propaga correctament a l'esdeveniment projectat.
+
+`especificacio.md` actualitzat: §4.1 esmenta el nou camp TI i els filtres de la pantalla de gestió; §4.3 esmenta que la taula de moviments previstos comparteix filtres amb Moviments.
 
 ### 2026-07-12 — Eliminació de la detecció automàtica de recurrents
 

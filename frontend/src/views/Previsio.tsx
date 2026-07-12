@@ -5,6 +5,9 @@ import type { Categoria, Compte, Previsio as PrevisioResultat } from '../api/typ
 import { formatDateEs } from '../lib/dates';
 import { centsToEs } from '../lib/numbers';
 
+type FiltreTipus = 'tots' | 'ingres' | 'carrec';
+type FiltreTI = 'tots' | 'nomes' | 'exclou';
+
 interface Props {
   seleccionats: Compte[];
   categories: Categoria[];
@@ -17,6 +20,10 @@ const PREVISIO_BUIDA: PrevisioResultat = { saldosInicials: {}, esdeveniments: []
 export function Previsio({ seleccionats, categories }: Props) {
   const [horitzoDies, setHoritzoDies] = useState(30);
   const [previsio, setPrevisio] = useState<PrevisioResultat>(PREVISIO_BUIDA);
+  const [categoriaFiltre, setCategoriaFiltre] = useState('');
+  const [tipus, setTipus] = useState<FiltreTipus>('tots');
+  const [filtreTI, setFiltreTI] = useState<FiltreTI>('tots');
+  const [text, setText] = useState('');
 
   const compteIds = useMemo(() => seleccionats.map((c) => c.id), [seleccionats]);
   const categoriaNom = useMemo(() => new Map(categories.map((c) => [c.id, c.nom])), [categories]);
@@ -48,6 +55,23 @@ export function Previsio({ seleccionats, categories }: Props) {
       return { esdeveniment: e, saldoPerCompte: { ...acumulat } };
     });
   }, [previsio]);
+
+  // Els filtres només decideixen quines files es mostren, mai recalculen el
+  // saldo (ja calculat a `files` sobre TOTS els esdeveniments): mateix
+  // criteri que MovimentsList, on el saldo mostrat és sempre el real
+  // acumulat, independentment de quins moviments queden visibles.
+  const filtrats = useMemo(() => {
+    const textNormalitzat = text.trim().toUpperCase();
+    return files.filter(({ esdeveniment: e }) => {
+      if (categoriaFiltre && e.categoriaId !== categoriaFiltre) return false;
+      if (tipus === 'ingres' && e.importCents < 0) return false;
+      if (tipus === 'carrec' && e.importCents >= 0) return false;
+      if (filtreTI === 'nomes' && !e.esTransferenciaInterna) return false;
+      if (filtreTI === 'exclou' && e.esTransferenciaInterna) return false;
+      if (textNormalitzat && !e.concepte.toUpperCase().includes(textNormalitzat)) return false;
+      return true;
+    });
+  }, [files, categoriaFiltre, tipus, filtreTI, text]);
 
   if (seleccionats.length === 0) {
     return (
@@ -86,6 +110,39 @@ export function Previsio({ seleccionats, categories }: Props) {
         </label>
       </div>
 
+      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginBottom: 12 }}>
+        <label>
+          Categoria:{' '}
+          <select value={categoriaFiltre} onChange={(e) => setCategoriaFiltre(e.target.value)}>
+            <option value="">-- Totes --</option>
+            {categories.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.nom}
+              </option>
+            ))}
+          </select>
+        </label>
+        <label>
+          Tipus:{' '}
+          <select value={tipus} onChange={(e) => setTipus(e.target.value as FiltreTipus)}>
+            <option value="tots">Tots</option>
+            <option value="ingres">Ingressos</option>
+            <option value="carrec">Càrrecs</option>
+          </select>
+        </label>
+        <label>
+          TI:{' '}
+          <select value={filtreTI} onChange={(e) => setFiltreTI(e.target.value as FiltreTI)}>
+            <option value="tots">Totes</option>
+            <option value="nomes">Només TI</option>
+            <option value="exclou">Sense TI</option>
+          </select>
+        </label>
+        <label>
+          Text: <input value={text} onChange={(e) => setText(e.target.value)} placeholder="cercar al concepte" />
+        </label>
+      </div>
+
       {evolucio.length > 1 && (
         <div style={{ width: '100%', height: 300, marginBottom: 24 }}>
           <ResponsiveContainer>
@@ -103,6 +160,8 @@ export function Previsio({ seleccionats, categories }: Props) {
       <h3>Moviments previstos</h3>
       {previsio.esdeveniments.length === 0 ? (
         <p style={{ fontSize: 12, color: '#555' }}>Cap moviment previst en aquest horitzó.</p>
+      ) : filtrats.length === 0 ? (
+        <p style={{ fontSize: 12, color: '#555' }}>Cap moviment previst coincideix amb els filtres.</p>
       ) : (
         // Una columna d'Import/Saldo per compte seleccionat (mateix criteri
         // que la taula de Moviments): es veu de seguida quin compte rep cada
@@ -137,7 +196,7 @@ export function Previsio({ seleccionats, categories }: Props) {
               </tr>
             </thead>
             <tbody>
-              {files.map(({ esdeveniment: e, saldoPerCompte }) => (
+              {filtrats.map(({ esdeveniment: e, saldoPerCompte }) => (
                 <tr key={`${e.recurrentId}-${e.data}`} style={e.vençut ? { background: '#fff3e0' } : undefined}>
                   <td style={{ ...cellStyle, ...cellData }}>{formatDateEs(e.data)}</td>
                   <td style={{ ...cellStyle, ...cellConcepte }}>

@@ -822,4 +822,25 @@ describe('actualitzaRecurrent (especificacio.md 4.1.5)', () => {
     actualitzaRecurrent(recurrent.id, { dataFi: null });
     expect(listRecurrents()[0].dataFi).toBeUndefined();
   });
+
+  it('defaults esTransferenciaInterna to false, and creaRecurrentManual can set it directly', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+
+    const perDefecte = creaRecurrentManual(dades(compte.id));
+    expect(perDefecte.esTransferenciaInterna).toBe(false);
+
+    const marcat = creaRecurrentManual(dades(compte.id, { esTransferenciaInterna: true }));
+    expect(marcat.esTransferenciaInterna).toBe(true);
+  });
+
+  it('actualitzaRecurrent toggles esTransferenciaInterna', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const recurrent = creaRecurrentManual(dades(compte.id));
+
+    actualitzaRecurrent(recurrent.id, { esTransferenciaInterna: true });
+    expect(listRecurrents()[0].esTransferenciaInterna).toBe(true);
+
+    actualitzaRecurrent(recurrent.id, { esTransferenciaInterna: false });
+    expect(listRecurrents()[0].esTransferenciaInterna).toBe(false);
+  });
 });

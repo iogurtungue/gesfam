@@ -19,12 +19,12 @@ type Pestanya = 'panell' | 'moviments' | 'resum' | 'categories' | 'comptes' | 'i
 const PESTANYES: { id: Pestanya; label: string; ambSelector: boolean }[] = [
   { id: 'panell', label: 'Panell general', ambSelector: true },
   { id: 'moviments', label: 'Moviments', ambSelector: true },
+  { id: 'previsio', label: 'Previsió', ambSelector: true },
   { id: 'resum', label: 'Resums', ambSelector: true },
   { id: 'categories', label: 'Categories i regles', ambSelector: false },
   { id: 'comptes', label: 'Comptes', ambSelector: false },
   { id: 'importar', label: 'Importar', ambSelector: false },
   { id: 'recurrents', label: 'Recurrents', ambSelector: false },
-  { id: 'previsio', label: 'Previsió', ambSelector: true },
   { id: 'manteniment', label: 'Manteniment', ambSelector: false },
 ];
 

@@ -138,6 +138,14 @@ describe('projectaEsdeveniments', () => {
     expect(esdeveniments.map((e) => e.data)).toEqual(['2026-07-15']);
   });
 
+  it('propagates esTransferenciaInterna from the recurrent to the projected event', () => {
+    const [marcat] = projectaEsdeveniments([recurrent({ esTransferenciaInterna: true })], [], 30, AVUI);
+    expect(marcat.esTransferenciaInterna).toBe(true);
+
+    const [noMarcat] = projectaEsdeveniments([recurrent()], [], 30, AVUI);
+    expect(noMarcat.esTransferenciaInterna).toBeUndefined();
+  });
+
   it('sorts events chronologically across multiple recurrents', () => {
     const esdeveniments = projectaEsdeveniments(
       [

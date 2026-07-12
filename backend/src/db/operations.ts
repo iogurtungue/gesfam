@@ -769,6 +769,7 @@ interface RecurrentRow {
   referencia: string | null;
   origen: string;
   estat: string;
+  es_transferencia_interna: number;
 }
 
 function rowToRecurrent(row: RecurrentRow): Recurrent {
@@ -786,6 +787,7 @@ function rowToRecurrent(row: RecurrentRow): Recurrent {
     referencia: row.referencia ?? undefined,
     origen: row.origen as OrigenRecurrent,
     estat: row.estat as EstatRecurrent,
+    esTransferenciaInterna: row.es_transferencia_interna === 1,
   };
 }
 
@@ -809,6 +811,8 @@ export interface DadesRecurrent {
   dataFi?: string;
   categoriaId?: string;
   referencia?: string;
+  /** Si aquest recurrent representa un moviment entre comptes propis. Per defecte `false`. */
+  esTransferenciaInterna?: boolean;
 }
 
 function inserirRecurrent(data: DadesRecurrent, origen: OrigenRecurrent, estat: EstatRecurrent): Recurrent {
@@ -832,12 +836,13 @@ function inserirRecurrent(data: DadesRecurrent, origen: OrigenRecurrent, estat: 
     referencia: data.referencia,
     origen,
     estat,
+    esTransferenciaInterna: data.esTransferenciaInterna ?? false,
   };
   getDb()
     .prepare(
       `INSERT INTO recurrents
-        (id, compte_id, concepte, concepte_normalitzat, periodicitat, import_cents, import_aproximat, data_prevista, data_fi, categoria_id, referencia, origen, estat)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        (id, compte_id, concepte, concepte_normalitzat, periodicitat, import_cents, import_aproximat, data_prevista, data_fi, categoria_id, referencia, origen, estat, es_transferencia_interna)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
     .run(
       recurrent.id,
@@ -853,6 +858,7 @@ function inserirRecurrent(data: DadesRecurrent, origen: OrigenRecurrent, estat: 
       recurrent.referencia ?? null,
       recurrent.origen,
       recurrent.estat,
+      recurrent.esTransferenciaInterna ? 1 : 0,
     );
   return recurrent;
 }
@@ -874,6 +880,7 @@ export function actualitzaRecurrent(
     dataFi: string | null;
     categoriaId: string | null;
     referencia: string | null;
+    esTransferenciaInterna: boolean;
   }>,
 ): void {
   if (!getDb().prepare('SELECT 1 FROM recurrents WHERE id = ?').get(id)) {
@@ -916,6 +923,10 @@ export function actualitzaRecurrent(
   if (data.referencia !== undefined) {
     assignacions.push('referencia = ?');
     valors.push(data.referencia);
+  }
+  if (data.esTransferenciaInterna !== undefined) {
+    assignacions.push('es_transferencia_interna = ?');
+    valors.push(data.esTransferenciaInterna ? 1 : 0);
   }
   if (assignacions.length === 0) return;
   valors.push(id);
@@ -1038,6 +1049,7 @@ export function calculaPrevisio(compteIds: string[], horitzoDies: number, avui: 
       dataPrevista: r.dataPrevista,
       dataFi: r.dataFi,
       categoriaId: r.categoriaId,
+      esTransferenciaInterna: r.esTransferenciaInterna,
     }));
 
   const movimentsPerConciliacio: MovimentPerConciliacio[] = listMovimentsPerComptes(compteIds)

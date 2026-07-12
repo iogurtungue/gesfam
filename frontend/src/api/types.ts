@@ -170,6 +170,8 @@ export interface Recurrent {
   referencia?: string;
   origen: OrigenRecurrent;
   estat: EstatRecurrent;
+  /** Si aquest recurrent representa un moviment entre comptes propis (mateix concepte que `Moviment.esTransferenciaInterna`). */
+  esTransferenciaInterna?: boolean;
 }
 
 /** Una fila del fitxer de compromisos confirmats (4.2), abans de resoldre la Categoria a un id. */
@@ -202,6 +204,7 @@ export interface DadesRecurrent {
   dataFi?: string;
   categoriaId?: string;
   referencia?: string;
+  esTransferenciaInterna?: boolean;
 }
 
 export interface CommitImportResult {
@@ -225,6 +228,7 @@ export interface EsdevenimentPrevist {
   importCents: number;
   recurrentId: string;
   categoriaId?: string;
+  esTransferenciaInterna?: boolean;
   /** Només per a compromisos puntuals: la data prevista original ja havia passat i encara no s'ha conciliat, així que es mostra avui en lloc de desaparèixer. */
   vençut?: boolean;
 }

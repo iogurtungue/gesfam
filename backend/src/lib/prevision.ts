@@ -10,6 +10,7 @@ export interface RecurrentPerProjeccio {
   dataPrevista: string;
   dataFi?: string;
   categoriaId?: string;
+  esTransferenciaInterna?: boolean;
 }
 
 export interface MovimentPerConciliacio {
@@ -25,6 +26,7 @@ export interface EsdevenimentPrevist {
   importCents: number;
   recurrentId: string;
   categoriaId?: string;
+  esTransferenciaInterna?: boolean;
   /** Només per a `unica`: la `dataPrevista` original ja havia passat (i encara no s'ha conciliat) quan es va calcular la previsió, així que es mostra avui en lloc de desaparèixer sense avís. */
   vençut?: boolean;
 }
@@ -103,6 +105,7 @@ export function projectaEsdeveniments(
         importCents: r.importCents,
         recurrentId: r.id,
         categoriaId: r.categoriaId,
+        esTransferenciaInterna: r.esTransferenciaInterna,
         ...(vençut && { vençut: true }),
       });
       continue;
@@ -120,6 +123,7 @@ export function projectaEsdeveniments(
           importCents: r.importCents,
           recurrentId: r.id,
           categoriaId: r.categoriaId,
+          esTransferenciaInterna: r.esTransferenciaInterna,
         });
       }
 

@@ -209,6 +209,7 @@ export function actualitzaRecurrent(
     dataFi: string | null;
     categoriaId: string | null;
     referencia: string | null;
+    esTransferenciaInterna: boolean;
   }>,
 ): Promise<void> {
   return req(`/recurrents/${id}`, { method: 'PATCH', ...json(data) });

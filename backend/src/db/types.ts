@@ -110,4 +110,6 @@ export interface Recurrent {
   referencia?: string;
   origen: OrigenRecurrent;
   estat: EstatRecurrent;
+  /** Si aquest recurrent representa un moviment entre comptes propis (mateix concepte que `Moviment.esTransferenciaInterna`), per poder-lo filtrar a la pestanya de Recurrents i a la previsió. Per defecte `false`. */
+  esTransferenciaInterna?: boolean;
 }
