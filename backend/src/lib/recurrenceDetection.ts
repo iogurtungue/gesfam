@@ -90,6 +90,30 @@ function properaOcurrencia(ultimaData: string, periodicitat: DefinicioPeriodicit
   return prevista;
 }
 
+/** ISO date del dia `dia` (clampat a l'últim dia si el mes no en té tants) d'un any/mes 1-indexed donats. */
+function dataDelMes(any: number, mes1indexat: number, dia: number): string {
+  const ultimDia = new Date(Date.UTC(any, mes1indexat, 0)).getUTCDate();
+  const diaClampat = Math.min(dia, ultimDia);
+  return `${any}-${String(mes1indexat).padStart(2, '0')}-${String(diaClampat).padStart(2, '0')}`;
+}
+
+/**
+ * Propera data de liquidació d'una targeta al compte corrent (especificacio.md
+ * 3.2.1, sub-fase 3.5): el primer `diaLiquidacio` de mes que sigui igual o
+ * posterior a `dataCarrec` — si el dia de liquidació d'aquest mes ja ha
+ * passat respecte al càrrec, es passa al mes següent. És la data que
+ * realment afecta la tresoreria, no la data del càrrec a la targeta mateixa.
+ */
+export function properaDataLiquidacio(dataCarrec: string, diaLiquidacio: number): string {
+  const [y, m] = dataCarrec.split('-').map(Number);
+  const aquestMes = dataDelMes(y, m, diaLiquidacio);
+  if (aquestMes >= dataCarrec) return aquestMes;
+  const totalMesos = y * 12 + (m - 1) + 1;
+  const anySeguent = Math.floor(totalMesos / 12);
+  const mesSeguent = (totalMesos % 12) + 1;
+  return dataDelMes(anySeguent, mesSeguent, diaLiquidacio);
+}
+
 function mediana(valors: number[]): number {
   const ordenats = [...valors].sort((a, b) => a - b);
   const mig = Math.floor(ordenats.length / 2);

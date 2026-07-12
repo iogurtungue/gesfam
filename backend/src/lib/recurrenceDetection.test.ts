@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { detectaRecurrents, type MovimentCandidat } from './recurrenceDetection';
+import { detectaRecurrents, properaDataLiquidacio, type MovimentCandidat } from './recurrenceDetection';
 
 // Anterior a totes les dates de moviments usades en aquest fitxer, perquè cap
 // test es vegi afectat per la projecció cap al futur (properaOcurrencia):
@@ -244,5 +244,31 @@ describe('detectaRecurrents', () => {
 
       expect(candidat.dataPrevista >= iso(ara)).toBe(true);
     });
+  });
+});
+
+describe('properaDataLiquidacio (sub-fase 3.5, especificacio.md 3.2.1)', () => {
+  it('returns the settlement day of the same month when it has not passed yet', () => {
+    expect(properaDataLiquidacio('2026-07-05', 20)).toBe('2026-07-20');
+  });
+
+  it('counts the charge day itself as an already-valid settlement day', () => {
+    expect(properaDataLiquidacio('2026-07-05', 5)).toBe('2026-07-05');
+  });
+
+  it('rolls over to next month when the settlement day already passed this month', () => {
+    expect(properaDataLiquidacio('2026-07-05', 3)).toBe('2026-08-03');
+  });
+
+  it('rolls over the year boundary', () => {
+    expect(properaDataLiquidacio('2026-12-20', 5)).toBe('2027-01-05');
+  });
+
+  it('clamps the settlement day to the last day of a shorter month', () => {
+    expect(properaDataLiquidacio('2026-02-01', 31)).toBe('2026-02-28');
+  });
+
+  it('clamps the settlement day when rolling over into a shorter next month', () => {
+    expect(properaDataLiquidacio('2026-01-31', 30)).toBe('2026-02-28');
   });
 });

@@ -770,11 +770,13 @@ describe('detectaCandidatsRecurrents (sub-fase 3.3, especificacio.md 4.1)', () =
     expect(candidat).toMatchObject({ compteId: corrent.id, periodicitat: 'mensual', importEstimatCents: -1200 });
   });
 
-  it('excludes targeta movements from detection (only corrent for now, per sub-fase 3.5)', () => {
+  it('detects a candidate from targeta-account movements too (sub-fase 3.5)', () => {
     const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
     importaMensual(targeta, 'NETFLIX', -1200);
 
-    expect(detectaCandidatsRecurrents()).toEqual([]);
+    const [candidat] = detectaCandidatsRecurrents();
+
+    expect(candidat).toMatchObject({ compteId: targeta.id, periodicitat: 'mensual', importEstimatCents: -1200 });
   });
 
   it('excludes movements marked as internal transfer', () => {
@@ -843,9 +845,79 @@ describe('detectaCandidatsRecurrents (sub-fase 3.3, especificacio.md 4.1)', () =
     expect(detectaCandidatsRecurrents()).toEqual([]);
   });
 
-  it('returns an empty list when there are no corrent accounts at all', () => {
+  it('returns an empty list when there are no accounts at all', () => {
+    expect(detectaCandidatsRecurrents()).toEqual([]);
+  });
+
+  it('returns an empty list for an account with no movements', () => {
     createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
     expect(detectaCandidatsRecurrents()).toEqual([]);
+  });
+});
+
+describe('detectaCandidatsRecurrents: targeta amb liquidació configurada (sub-fase 3.5, especificacio.md 3.2.1)', () => {
+  // Ocurrències construïdes relatives a "ara" (no a dates fixes de 2026): la
+  // darrera cau sempre més d'un any en el futur, així que la "propera
+  // ocurrència" (última + 1 mes, dia 5) mai necessita cap projecció addicional
+  // cap endavant (recurrenceDetection.ts `properaOcurrencia`) i el test és
+  // determinista independentment de quin dia real s'executi la suite.
+  function iso(d: Date): string {
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  }
+
+  function importaMensual(compte: Parameters<typeof commitImport>[0], concepte: string, importCents: number, fitxer = 'test.txt') {
+    const ara = new Date();
+    const dates = [13, 14, 15].map((mesosEndavant) => iso(new Date(ara.getFullYear(), ara.getMonth() + mesosEndavant, 5)));
+    commitImport(
+      compte,
+      dates.map((data) => mov(data, concepte, importCents)),
+      fitxer,
+    );
+    const ultimaOcurrencia = new Date(dates[2]);
+    const properaOcurrenciaCrua = new Date(ultimaOcurrencia.getFullYear(), ultimaOcurrencia.getMonth() + 1, 5);
+    return { properaOcurrenciaCrua };
+  }
+
+  it("uses the targeta's next settlement date instead of the raw next charge date when compteLiquidacioId/diaLiquidacio are configured", () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    actualitzaCompte(targeta.id, { compteLiquidacioId: corrent.id, diaLiquidacio: 20 });
+    const { properaOcurrenciaCrua } = importaMensual(targeta, 'NETFLIX', -1200);
+
+    const [candidat] = detectaCandidatsRecurrents();
+
+    // El dia de liquidació (20) del mateix mes de la propera ocurrència crua (dia 5) encara no ha passat, així que hi cau.
+    expect(candidat.compteId).toBe(targeta.id);
+    expect(candidat.dataPrevista).toBe(iso(new Date(properaOcurrenciaCrua.getFullYear(), properaOcurrenciaCrua.getMonth(), 20)));
+  });
+
+  it('keeps the raw next-charge date for a targeta without a settlement account/day configured', () => {
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    const { properaOcurrenciaCrua } = importaMensual(targeta, 'NETFLIX', -1200);
+
+    const [candidat] = detectaCandidatsRecurrents();
+
+    expect(candidat.dataPrevista).toBe(iso(properaOcurrenciaCrua));
+  });
+
+  it('keeps the raw next-charge date for a targeta with compteLiquidacioId but no diaLiquidacio', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const targeta = createCompte({ banc: 'sabadell', tipus: 'targeta', alias: 'Targeta' });
+    actualitzaCompte(targeta.id, { compteLiquidacioId: corrent.id });
+    const { properaOcurrenciaCrua } = importaMensual(targeta, 'NETFLIX', -1200);
+
+    const [candidat] = detectaCandidatsRecurrents();
+
+    expect(candidat.dataPrevista).toBe(iso(properaOcurrenciaCrua));
+  });
+
+  it('does not affect a corrent-account candidate (settlement logic only applies to targeta)', () => {
+    const corrent = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const { properaOcurrenciaCrua } = importaMensual(corrent, 'NOMINA', 180000);
+
+    const [candidat] = detectaCandidatsRecurrents();
+
+    expect(candidat.dataPrevista).toBe(iso(properaOcurrenciaCrua));
   });
 });
 
