@@ -123,13 +123,21 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 
 ### Pendent / coses obertes
 
-- **[OBERT] de l'especificació, sense confirmar encara**: despesa difusa a la previsió (fase 4) i llindar d'alerta de saldo mínim.
-- **Migració d'arquitectura pendent de validació de l'usuari** (vegeu criteri d'acceptació a l'historial) — **no s'ha d'iniciar la Fase 3 fins que l'usuari ho confirmi**.
-- **Fase 3 (recurrents) i Fase 4 (previsió)**: no iniciades.
+- **[OBERT] de l'especificació, sense confirmar encara**: despesa difusa a la previsió (fase 4), llindar d'alerta de saldo mínim, i mecanisme de conciliació entre un compromís confirmat i el moviment bancari real que el liquida (§4.2, veure sub-fase 3.6).
+- **Fase 3 (recurrents) iniciada**: l'usuari ha confirmat començar-la, per sub-fases. Pla acordat i documentat a `especificacio.md` (§4.1, §4.2, §6 punt 3): 3.1 model de dades unificat (recurrents: detectat/manual/importat), 3.2 importació de compromisos confirmats (factures de proveïdor, Excel), 3.3 motor de detecció de periodicitat, 3.4 pantalla de revisió/confirmació unificada, 3.5 exclusions i cas de targetes, 3.6 conciliació (disseny només, frontera amb Fase 4). Cap sub-fase implementada encara.
+- **Fase 4 (previsió)**: no iniciada.
 - **Fase 5 (opcional)**: simulacions manuals, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
-- Verificació manual en navegador (clic a clic) de la migració encara pendent per part de l'usuari — la verificació feta fins ara ha estat via API (curl) i tests automatitzats, no interacció real amb la UI.
-- Cap canvi d'aquesta migració s'ha commitejat ni pujat encara (últim commit `2b68f78`, Fase 2 + correccions).
+
+### 2026-07-12 — Fase 3 (recurrents): pla de sub-fases acordat i documentat a `especificacio.md`
+
+L'usuari ha confirmat iniciar la Fase 3 i ha demanat fer-ho per sub-fases, més una necessitat nova no prevista a l'especificació original: per a alguns comptes cal poder introduir ingressos/despeses **ja confirmats** (import i data de venciment coneguts amb certesa, p. ex. factures de proveïdor), no només recurrents detectats per patró.
+
+- Model proposat: unificar-ho amb l'entitat `recurrents` — un compromís pot tenir `origen` detectat/manual/importat i `periodicitat` que inclou «única» (venciment puntual no repetitiu). Els d'origen manual/importat entren directament com a confirmats.
+- Format d'importació acordat amb l'usuari (preguntat explícitament): Excel (.xlsx), **un compte per importació** (com la importació bancària, no una columna de compte per fila). Columnes: Data de venciment, Concepte, Import (amb signe), Categoria (opcional), Referència (opcional).
+- `especificacio.md` actualitzat: nova secció **4.2 Compromisos confirmats (importació de factures amb venciment conegut)** (l'antiga 4.2 "Motor de previsió" passa a ser 4.3); punt 3 de "Pla de fases" (secció 6) desglossat en sub-fases 3.1 a 3.6.
+- Sub-fases acordades: 3.1 model de dades unificat, 3.2 importació de compromisos confirmats, 3.3 motor de detecció de periodicitat, 3.4 pantalla de revisió/confirmació unificada, 3.5 exclusions (transferències internes, contrapartides de liquidació) i cas de targetes, 3.6 disseny de la conciliació compromís↔moviment real (implementació ajornada a Fase 4).
+- Cap línia de codi escrita encara; aquesta entrada només documenta l'acord de planificació. Following-up: atacar la 3.1.
 
 ### 2026-07-12 — Presentació a Moviments: les transferències internes ja no es mostren atenuades; la columna Liquidació s'atenua llevat de les marcades (i les contrapartides)
 

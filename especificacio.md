@@ -95,7 +95,25 @@ Algorisme sobre l'històric (mínim recomanat: 3-6 mesos de dades; avisar l'usua
 4. **Resultat per patró**: periodicitat, import estimat (mediana; per a imports variables, mediana + rang), propera data prevista, confiança (nombre d'ocurrències i regularitat).
 5. **Revisió per l'usuari**: pantalla on confirmar, corregir (periodicitat o import), ignorar o afegir manualment recurrents que l'algorisme no ha vist (p. ex. un rebut anual amb una sola ocurrència a l'històric). **La confirmació de l'usuari mana sempre sobre la detecció automàtica.**
 
-### 4.2 Motor de previsió
+### 4.2 Compromisos confirmats (importació de factures amb venciment conegut)
+
+A banda dels recurrents detectats automàticament sobre l'històric (4.1), alguns imports i dates ja es coneixen amb certesa abans que el moviment aparegui al banc — per exemple, una factura de proveïdor ja emesa amb un venciment concret. Aquests compromisos:
+
+- Comparteixen model amb els recurrents (3.4 / 4.1): mateixa entitat, amb un camp `origen` (`detectat` | `manual` | `importat`) i una `periodicitat` que pot ser **única** (un venciment puntual, no repetitiu) a més de les periodicitats habituals.
+- Els d'origen `manual` o `importat` entren directament com a **confirmats** (no calen revisar-se com els detectats automàticament, ja que l'import i la data són certs, no estimats), però apareixen igualment a la pantalla de revisió (4.1.5) per poder-los editar o eliminar.
+- **Importació**: fitxer Excel (.xlsx), un compte per importació (com la importació bancària, 3.1), amb previsualització abans de confirmar. Format de fitxer:
+
+  | Columna | Obligatòria | Descripció |
+  |---|---|---|
+  | Data de venciment | Sí | Data en què s'espera el càrrec/ingrés |
+  | Concepte | Sí | Nom del proveïdor o descripció |
+  | Import | Sí | Amb signe: negatiu = despesa, positiu = ingrés (mateix conveni que la resta de l'app) |
+  | Categoria | No | Si el nom coincideix amb una categoria existent, s'assigna automàticament |
+  | Referència | No | Núm. de factura, només informatiu |
+
+- **[OBERT]** Conciliació amb el moviment real: quan el moviment bancari corresponent s'acaba important normalment (3.1), cal evitar comptar-lo dues vegades a la previsió (un cop com a compromís confirmat, un altre com a moviment real ja carregat). Mecanisme de conciliació (per import + data + compte, similar als suggeriments de transferència interna de 3.4, o marcatge manual «ja liquidat») a resoldre durant la implementació de la Fase 4 (motor de previsió), però a tenir present ja en el disseny del model.
+
+### 4.3 Motor de previsió
 
 - Punt de partida: saldo consolidat actual (i per compte).
 - Projecció dia a dia fins a l'horitzó triat (30 / 60 / 90 dies, i camp lliure): a cada data prevista d'un recurrent confirmat, aplicar-ne l'import estimat.
@@ -111,7 +129,13 @@ Multiusuari i autenticació; connexió automàtica amb bancs; app mòbil nativa;
 
 1. **Fase 1 — Esquelet i ingesta**: monorepo amb backend Node+TS (Express/Fastify, better-sqlite3, esquema SQLite amb migracions) i frontend Vite+React+TS; arrencada unificada amb `npm start`; importador amb detecció de banc + mapatge manual (parseig al backend), deduplicació, previsualització i resum d'importació, desfer lot, còpia automàtica del `.db` abans d'importar. *Criteri d'acceptació*: importar dos extractes solapats de cada banc real sense duplicats ni files perdudes, i verificar que les dades persisteixen després de reiniciar servidor i navegador.
 2. **Fase 2 — Consulta**: panell general, selector multi-compte, vista de saldos a una data, llistat filtrable, resum mensual, regles de categorització, transferències internes, exportació/importació JSON. *Criteri*: retrobar qualsevol moviment en <10 segons amb els filtres.
-3. **Fase 3 — Recurrents**: detecció, pantalla de revisió/confirmació, recurrents manuals. *Criteri*: detectar correctament nòmina, hipoteca/lloguer i 3+ subministraments de l'històric real de l'usuari.
+3. **Fase 3 — Recurrents**: detecció, pantalla de revisió/confirmació, recurrents manuals i compromisos confirmats per importació. *Criteri*: detectar correctament nòmina, hipoteca/lloguer i 3+ subministraments de l'històric real de l'usuari. Desenvolupada per sub-fases, validant cadascuna amb l'usuari abans de passar a la següent:
+   - **3.1 — Model de dades unificat**: taula `recurrents` que cobreix tant els patrons detectats automàticament com els compromisos manuals/importats (`origen`: detectat/manual/importat; `periodicitat` inclou «única»; `estat`: suggerit/confirmat/ignorat).
+   - **3.2 — Importació de compromisos confirmats**: nou tipus d'importació (factures de proveïdor amb venciment conegut, format i flux a 4.2).
+   - **3.3 — Motor de detecció de periodicitat**: normalització de concepte, agrupació, classificació de periodicitat, import estimat i confiança (4.1), sobre l'històric bancari real.
+   - **3.4 — Pantalla de revisió/confirmació unificada**: candidats detectats (3.3) + compromisos manuals/importats (3.2), amb accions de confirmar/corregir/ignorar/eliminar.
+   - **3.5 — Exclusions i cas de targetes**: transferències internes i contrapartides de liquidació excloses de la detecció; recurrents de targeta relacionats amb la data de liquidació al compte corrent.
+   - **3.6 — (frontera amb Fase 4) Conciliació**: disseny del mecanisme perquè un compromís confirmat i el moviment bancari real que finalment el liquida no comptin dues vegades a la previsió; implementació efectiva ajornada a la Fase 4 (4.2, punt [OBERT]).
 4. **Fase 4 — Previsió**: motor de projecció, gràfic, taula, alertes de llindar. *Criteri*: la previsió a 30 dies quadra amb el que l'usuari espera manualment (±revisió conjunta).
 5. **Fase 5 (opcional)**: parser Norma 43, simulacions, despesa difusa, exportacions addicionals.
 
