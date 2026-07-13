@@ -132,7 +132,7 @@ frontend/src/
 
 ### Estat de les proves
 
-Backend: 198 tests (Vitest) — parsers (inclou `recurrentsFile.ts`, el parser del format fix de compromisos), dedup (inclou `dedup/recurrents.ts`), `lib/` (inclou `liquidacioTargeta.ts`, `computeContrapartidaId`, `computeRecurrentHash`, `dates.ts` — `afegeixDies`/`afegeixMesos`/`diesEntre`/`isoAvui`, reutilitzats pel motor de previsió —, i el motor de previsió `prevision.ts`: `projectaEsdeveniments`/`construeixSerieDiaria`), `db/operations.ts` contra SQLite en memòria (`GESFAM_DB_PATH=':memory:'`, inclou el mecanisme de liquidació de targeta: marcatge, quadratura, idempotència, cascada via `undoLot`; i el model de recurrents: creació manual, validacions, eliminació, importació amb dedup i resolució de categoria, còpia de seguretat, manteniment), `db/client.ts` (migracions) i `db/backupFile.ts` (còpia + retenció). Frontend: 36 tests — `lib/balance.ts`, `lib/summary.ts`, `lib/dates.ts` (inclou `faDiesAbans`), `lib/numbers.ts` (només lògica de visualització; els components de vista, inclosos els de recurrents i ara `views/Previsio.tsx` — no tenen tests propis: es verifiquen manualment/via HTTP, seguint el mateix criteri que la resta de `views/`/`import/`). `npx tsc -b` net a totes dues bandes, `npm run build` (frontend) i `oxlint` (frontend) nets.
+Backend: 200 tests (Vitest) — parsers (inclou `recurrentsFile.ts`, el parser del format fix de compromisos), dedup (inclou `dedup/recurrents.ts`), `lib/` (inclou `liquidacioTargeta.ts`, `computeContrapartidaId`, `computeRecurrentHash`, `dates.ts` — `afegeixDies`/`afegeixMesos`/`diesEntre`/`isoAvui`, reutilitzats pel motor de previsió —, i el motor de previsió `prevision.ts`: `projectaEsdeveniments`/`construeixSerieDiaria`), `db/operations.ts` contra SQLite en memòria (`GESFAM_DB_PATH=':memory:'`, inclou el mecanisme de liquidació de targeta: marcatge, quadratura, idempotència, cascada via `undoLot`; el model de recurrents: creació manual, validacions, eliminació, importació amb dedup i resolució de categoria, còpia de seguretat, manteniment; i `actualitzaRecurrent` reassignant el compte, amb validació de compte inexistent), `db/client.ts` (migracions) i `db/backupFile.ts` (còpia + retenció). Frontend: 36 tests — `lib/balance.ts`, `lib/summary.ts`, `lib/dates.ts` (inclou `faDiesAbans`), `lib/numbers.ts` (només lògica de visualització; els components de vista, inclosos els de recurrents i ara `views/Previsio.tsx` — no tenen tests propis: es verifiquen manualment/via HTTP, seguint el mateix criteri que la resta de `views/`/`import/`). `npx tsc -b` net a totes dues bandes, `npm run build` (frontend) i `oxlint` (frontend) nets.
 
 Verificació addicional (no automatitzada, feta manualment durant la migració d'arquitectura, vegeu historial): migració de la còpia de seguretat JSON real de l'usuari (4 comptes, 266 moviments, 4 lots, 23 categories, 15 regles) a SQLite amb comparació camp a camp — 0 diferències reals; arrencada de `npm start` real contra `dades/finances.db` migrat, import/undo/eliminar compte de prova via HTTP (confirmant que `backupDbFile()` es dispara), i reinici del servidor confirmant que les dades hi són intactes.
 
@@ -147,6 +147,35 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Un recurrent ja confirmat amb `dataPrevista` passada no s'actualitza automàticament a la seva pròpia fila**: l'usuari l'ha de corregir a mà des de l'edició in-line si vol que `dataPrevista` reflecteixi la realitat. El motor de previsió (Fase 4, 4.1) ja ho gestiona sense necessitat d'aquesta correcció manual: per a un periòdic avança silenciosament fins la primera ocurrència futura, i per a un `unica` vençut i encara no conciliat, el projecta avui mateix marcat `vençut: true` (vegeu entrada d'historial corresponent) en lloc de desaparèixer o quedar-se enrere.
 - **Fase 5 (opcional)**: simulacions manuals, despesa difusa, exportacions addicionals — no iniciades.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
+
+### 2026-07-13 — Previsió: columna TI a la taula i horitzó d'1 any
+
+Petició de l'usuari: a la pestanya Previsió, mostrar la columna TI a la taula de moviments previstos (com a Moviments), i afegir un horitzó predefinit d'1 any.
+
+- **`frontend/src/views/Previsio.tsx`**:
+  - `HORITZONS_PREDEFINITS` passa de `[30, 60, 90]` a `[30, 60, 90, 365]`, amb una etiqueta pròpia (`etiquetaHoritzo`) que mostra "1 any" en lloc de "365 dies".
+  - Nova columna TI a la taula de moviments previstos (mateixa posició que a Moviments: just després de Categoria), amb casella instantània que crida `handleTransferenciaChange` directament sobre la fila — igual que ja feia `RecurrentsList.tsx`. El camp `esTransferenciaInterna` ja arribava a cada esdeveniment (`EsdevenimentPrevist`), no calen canvis de backend.
+  - Eliminada la casella "TI" duplicada dins del formulari d'edició en línia (ara redundant amb la nova columna sempre visible); el `colSpan` de la fila d'edició s'ha ajustat de `4 + comptes*2` a `5 + comptes*2` per la columna nova.
+
+Tests: sense canvis (la vista no té tests propis, es verifica manualment/via HTTP com la resta de `views/`). `tsc -b`/`oxlint`/`vite build` nets a totes dues bandes; 200 tests backend sense canvis.
+
+Validat via HTTP contra una còpia temporal de `dades/finances.db` (esborrada en acabar): `GET /api/previsio` amb `horitzoDies=365` retorna 125 esdeveniments (vs. 54 a 90 dies), inclosos alguns amb `esTransferenciaInterna: true` — confirma que l'horitzó ampliat funciona i que el camp que alimenta la nova columna ja hi és. Encara no hi ha eina de navegador connectada en aquesta sessió (calia una sessió nova perquè es carregui el servidor MCP que l'usuari acaba d'afegir) — falta la confirmació visual de l'usuari clicant la nova columna i el botó "1 any".
+
+`especificacio.md` actualitzat (4.2): l'horitzó inclou ara 1 any, i la taula mostra la columna TI.
+
+### 2026-07-13 — Recurrents: filtres per TI i text, i edició del compte
+
+Petició de l'usuari: a la pestanya Recurrents, poder filtrar per TI i per text (com a Moviments), i poder editar el camp Compte d'un recurrent ja creat (fins ara fix un cop confirmat).
+
+- **`backend/src/db/operations.ts`**: `actualitzaRecurrent` accepta ara `compteId` a l'objecte de canvis parcials, amb la mateixa validació d'existència (`existeixCompte`) que ja es feia servir a `creaRecurrentManual`; llança si el compte indicat no existeix.
+- **`frontend/src/api/client.ts`** i **`frontend/src/lib/recurrentEdit.ts`**: `compteId` afegit al tipus de payload d'`actualitzaRecurrent` i a `EsborranyEdicio`/`esborranyDe`/`esborranyAPayload` (mòdul compartit amb l'edició en línia de Previsió, que no es veu afectada perquè sempre passa per aquests helpers sense construir l'objecte a mà).
+- **`frontend/src/import/RecurrentsList.tsx`**: la cel·la de Compte a la fila en edició passa de text pla a un `<select>` amb tots els comptes; nous filtres TI (totes / només TI / sense TI, mateixes opcions que Moviments) i Text (cerca lliure sobre el concepte, en majúscules), afegits a la barra de filtres ja existent (Compte/Periodicitat/Categoria).
+
+Tests: nous a `operations.test.ts` (`actualitzaRecurrent` reassigna el compte; llança per un `compteId` inexistent) — 200 tests backend en total (`prevision.test.ts` sense canvis, 22 tests). `tsc -b`/`oxlint`/`vite build` nets a totes dues bandes; 36 tests frontend sense canvis (els filtres i l'edició de compte, com la resta de `views/`/`import/`, es verifiquen manualment/via HTTP).
+
+Validat via HTTP contra una còpia temporal de `dades/finances.db` (esborrada en acabar): `PATCH /api/recurrents/:id` amb `compteId` d'un compte real persisteix el canvi i `GET` posterior el reflecteix; amb un `compteId` inexistent respon 400 amb el missatge d'error esperat. No hi ha eina de navegador disponible en aquesta sessió, així que els filtres TI/Text (lògica idèntica a la ja validada manualment a Moviments) no s'han pogut clicar en pantalla — falta la confirmació visual de l'usuari.
+
+`especificacio.md` actualitzat (4.1): la barra de filtres de Recurrents inclou ara TI i text, i el compte assignat es pot reassignar des de l'edició en línia.
 
 ### 2026-07-12 — Previsió: els periòdics vençuts i no conciliats també s'avisen; finestra de resolució ampliada a 30 dies
 

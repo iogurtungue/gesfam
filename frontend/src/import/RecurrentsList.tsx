@@ -20,6 +20,8 @@ import {
   inputCompletCella,
 } from '../lib/recurrentsTable';
 
+type FiltreTI = 'tots' | 'nomes' | 'exclou';
+
 interface Props {
   recurrents: Recurrent[];
   comptes: Compte[];
@@ -36,6 +38,8 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
   const [filtreCompteId, setFiltreCompteId] = useState('');
   const [filtrePeriodicitat, setFiltrePeriodicitat] = useState<PeriodicitatRecurrent | ''>('');
   const [filtreCategoriaId, setFiltreCategoriaId] = useState('');
+  const [filtreTI, setFiltreTI] = useState<FiltreTI>('tots');
+  const [text, setText] = useState('');
   const compteAlias = new Map(comptes.map((c) => [c.id, c.alias]));
   const categoriaNom = new Map(categories.map((c) => [c.id, c.nom]));
 
@@ -83,11 +87,14 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
     );
   }
 
+  const textNormalitzat = text.trim().toUpperCase();
   const filtrats = recurrents.filter(
     (r) =>
       (!filtreCompteId || r.compteId === filtreCompteId) &&
       (!filtrePeriodicitat || r.periodicitat === filtrePeriodicitat) &&
-      (!filtreCategoriaId || r.categoriaId === filtreCategoriaId),
+      (!filtreCategoriaId || r.categoriaId === filtreCategoriaId) &&
+      (filtreTI === 'tots' || (filtreTI === 'nomes') === Boolean(r.esTransferenciaInterna)) &&
+      (!textNormalitzat || r.concepte.toUpperCase().includes(textNormalitzat)),
   );
 
   const ordenats = [...filtrats].sort(
@@ -134,6 +141,17 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
             ))}
           </select>
         </label>
+        <label>
+          TI:{' '}
+          <select value={filtreTI} onChange={(e) => setFiltreTI(e.target.value as FiltreTI)}>
+            <option value="tots">Totes</option>
+            <option value="nomes">Només TI</option>
+            <option value="exclou">Sense TI</option>
+          </select>
+        </label>
+        <label>
+          Text: <input value={text} onChange={(e) => setText(e.target.value)} placeholder="cercar al concepte" />
+        </label>
       </div>
 
       {ordenats.length === 0 ? (
@@ -159,7 +177,15 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
           {ordenats.map((r) =>
             editant === r.id && esborrany ? (
               <tr key={r.id}>
-                <td style={{ ...cellStyle, ...cellCompte }}>{compteAlias.get(r.compteId) ?? r.compteId}</td>
+                <td style={{ ...cellStyle, ...cellCompte }}>
+                  <select value={esborrany.compteId} onChange={(e) => setEsborrany({ ...esborrany, compteId: e.target.value })}>
+                    {comptes.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.alias}
+                      </option>
+                    ))}
+                  </select>
+                </td>
                 <td style={{ ...cellStyle, ...cellPeriodicitat }}>
                   <select
                     value={esborrany.periodicitat}

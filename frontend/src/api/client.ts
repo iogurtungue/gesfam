@@ -201,6 +201,7 @@ export function creaRecurrentManual(data: DadesRecurrent): Promise<Recurrent> {
 export function actualitzaRecurrent(
   id: string,
   data: Partial<{
+    compteId: string;
     concepte: string;
     periodicitat: PeriodicitatRecurrent;
     importCents: number;

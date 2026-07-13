@@ -896,4 +896,21 @@ describe('actualitzaRecurrent (especificacio.md 4.1.5)', () => {
     actualitzaRecurrent(recurrent.id, { esTransferenciaInterna: false });
     expect(listRecurrents()[0].esTransferenciaInterna).toBe(false);
   });
+
+  it('actualitzaRecurrent moves the recurrent to another compte', () => {
+    const origen = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Origen' });
+    const desti = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Destí' });
+    const recurrent = creaRecurrentManual(dades(origen.id));
+
+    actualitzaRecurrent(recurrent.id, { compteId: desti.id });
+
+    expect(listRecurrents()[0].compteId).toBe(desti.id);
+  });
+
+  it('actualitzaRecurrent throws for a compteId that does not exist', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const recurrent = creaRecurrentManual(dades(compte.id));
+
+    expect(() => actualitzaRecurrent(recurrent.id, { compteId: 'no-existeix' })).toThrow();
+  });
 });

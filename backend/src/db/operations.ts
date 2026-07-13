@@ -873,6 +873,7 @@ export function creaRecurrentManual(data: DadesRecurrent): Recurrent {
 export function actualitzaRecurrent(
   id: string,
   data: Partial<{
+    compteId: string;
     concepte: string;
     periodicitat: PeriodicitatRecurrent;
     importCents: number;
@@ -887,12 +888,19 @@ export function actualitzaRecurrent(
   if (!getDb().prepare('SELECT 1 FROM recurrents WHERE id = ?').get(id)) {
     throw new Error('El recurrent indicat no existeix.');
   }
+  if (data.compteId !== undefined && !existeixCompte(data.compteId)) {
+    throw new Error(`El compte "${data.compteId}" no existeix.`);
+  }
   if (data.categoriaId != null && !existeixCategoria(data.categoriaId)) {
     throw new Error(`La categoria "${data.categoriaId}" no existeix.`);
   }
 
   const assignacions: string[] = [];
   const valors: (string | number | null)[] = [];
+  if (data.compteId !== undefined) {
+    assignacions.push('compte_id = ?');
+    valors.push(data.compteId);
+  }
   if (data.concepte !== undefined) {
     assignacions.push('concepte = ?', 'concepte_normalitzat = ?');
     valors.push(data.concepte, normalizeConceptForDedup(data.concepte));

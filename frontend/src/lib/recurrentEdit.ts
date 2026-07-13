@@ -5,6 +5,7 @@ import type { PeriodicitatRecurrent, Recurrent } from '../api/types';
 // totes dues facin servir exactament el mateix esborrany d'edició.
 
 export interface EsborranyEdicio {
+  compteId: string;
   concepte: string;
   periodicitat: PeriodicitatRecurrent;
   importEuros: string;
@@ -17,6 +18,7 @@ export interface EsborranyEdicio {
 
 export function esborranyDe(r: Recurrent): EsborranyEdicio {
   return {
+    compteId: r.compteId,
     concepte: r.concepte,
     periodicitat: r.periodicitat,
     importEuros: (r.importCents / 100).toString(),
@@ -33,6 +35,7 @@ export function esborranyAPayload(esborrany: EsborranyEdicio) {
   const importCents = Math.round(parseFloat(esborrany.importEuros.replace(',', '.')) * 100);
   if (Number.isNaN(importCents)) return null;
   return {
+    compteId: esborrany.compteId,
     concepte: esborrany.concepte,
     periodicitat: esborrany.periodicitat,
     importCents,

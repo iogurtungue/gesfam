@@ -6,7 +6,7 @@ import { formatDateEs } from '../lib/dates';
 import { centsToEs } from '../lib/numbers';
 import { PERIODICITAT_LABEL, TOTES_LES_PERIODICITATS } from '../lib/periodicitat';
 import { esborranyAPayload, esborranyDe, type EsborranyEdicio } from '../lib/recurrentEdit';
-import { inputCompletCella } from '../lib/recurrentsTable';
+import { cellTI, inputCompletCella } from '../lib/recurrentsTable';
 
 type FiltreTipus = 'tots' | 'ingres' | 'carrec';
 type FiltreTI = 'tots' | 'nomes' | 'exclou';
@@ -16,7 +16,11 @@ interface Props {
   categories: Categoria[];
 }
 
-const HORITZONS_PREDEFINITS = [30, 60, 90];
+const HORITZONS_PREDEFINITS = [30, 60, 90, 365];
+
+function etiquetaHoritzo(dies: number): string {
+  return dies === 365 ? '1 any' : `${dies} dies`;
+}
 
 const PREVISIO_BUIDA: PrevisioResultat = { saldosInicials: {}, esdeveniments: [], serieDiaria: [] };
 
@@ -154,7 +158,7 @@ export function Previsio({ seleccionats, categories }: Props) {
             onClick={() => setHoritzoDies(dies)}
             style={{ fontWeight: horitzoDies === dies ? 'bold' : 'normal' }}
           >
-            {dies} dies
+            {etiquetaHoritzo(dies)}
           </button>
         ))}
         <label>
@@ -241,6 +245,9 @@ export function Previsio({ seleccionats, categories }: Props) {
                 <th style={{ ...cellStyle, ...cellCategoria }} rowSpan={2}>
                   Categoria
                 </th>
+                <th style={{ ...cellStyle, ...cellTI }} rowSpan={2}>
+                  TI
+                </th>
                 {seleccionats.map((c) => (
                   <th key={c.id} style={cellStyle} colSpan={2}>
                     {c.alias}
@@ -274,6 +281,13 @@ export function Previsio({ seleccionats, categories }: Props) {
                       )}
                     </td>
                     <td style={{ ...cellStyle, ...cellCategoria }}>{e.categoriaId ? (categoriaNom.get(e.categoriaId) ?? '—') : '—'}</td>
+                    <td style={{ ...cellStyle, ...cellTI }}>
+                      <input
+                        type="checkbox"
+                        checked={e.esTransferenciaInterna ?? false}
+                        onChange={(ev) => handleTransferenciaChange(e.recurrentId, ev.target.checked)}
+                      />
+                    </td>
                     {seleccionats.map((c) => {
                       const saldo = saldoPerCompte[c.id];
                       if (c.id === e.compteId) {
@@ -306,7 +320,7 @@ export function Previsio({ seleccionats, categories }: Props) {
                   </tr>
                   {editant === e.recurrentId && esborrany && (
                     <tr>
-                      <td colSpan={4 + seleccionats.length * 2} style={{ ...cellStyle, background: '#f7f7f7' }}>
+                      <td colSpan={5 + seleccionats.length * 2} style={{ ...cellStyle, background: '#f7f7f7' }}>
                         <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
                           <strong>Edita el recurrent:</strong>
                           <label>
@@ -378,14 +392,6 @@ export function Previsio({ seleccionats, categories }: Props) {
                               onChange={(ev) => setEsborrany({ ...esborrany, referencia: ev.target.value })}
                               style={{ width: 100 }}
                             />
-                          </label>
-                          <label title="Transferència interna (moviment entre comptes propis)">
-                            <input
-                              type="checkbox"
-                              checked={recurrentPerId.get(e.recurrentId)?.esTransferenciaInterna ?? false}
-                              onChange={(ev) => handleTransferenciaChange(e.recurrentId, ev.target.checked)}
-                            />{' '}
-                            TI
                           </label>
                           <button onClick={() => handleDesa(e.recurrentId)} disabled={desant}>
                             Desa

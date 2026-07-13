@@ -94,7 +94,7 @@ Els recurrents (compromisos periòdics o puntuals) només es donen d'alta de due
 
 Un cop creat (per qualsevol dels dos camins), el recurrent és directament **confirmat**: l'usuari ja n'ha decidit conscientment l'import i la data, no cal cap pas de revisió previ.
 
-Un recurrent es pot marcar com a **transferència interna** (mateix concepte que als moviments reals) per poder-lo filtrar; la pantalla de gestió permet filtrar la llista per compte, periodicitat i categoria.
+Un recurrent es pot marcar com a **transferència interna** (mateix concepte que als moviments reals) per poder-lo filtrar; la pantalla de gestió permet filtrar la llista per compte, periodicitat, categoria, TI (totes / només TI / sense TI) i text lliure sobre el concepte. El compte assignat es pot reassignar en qualsevol moment des de la mateixa edició en línia.
 
 > **Nota històrica**: una primera versió d'aquesta funcionalitat (sub-fases 3.3 «motor de detecció de periodicitat» i 3.5 «estimació agregada de targeta») detectava automàticament patrons de repetició sobre l'històric real i suggeria candidats a confirmar/ignorar. Es va **eliminar completament** a petició explícita de l'usuari: només es vol donar d'alta un recurrent manualment o per importació, mai per inferència sobre moviments passats (vegeu `ESTAT.md` per al detall de la implementació original i de la decisió de reversió). Els recurrents que ja s'havien confirmat a partir d'un candidat detectat en aquella època es mantenen intactes — `origen='detectat'` és ara només una etiqueta històrica, cap camí de codi actual en genera de nous.
 
@@ -145,7 +145,7 @@ Multiusuari i autenticació; connexió automàtica amb bancs; app mòbil nativa;
    - **3.6 — (frontera amb Fase 4) Conciliació**: dissenyat (4.2) — mecanisme totalment automàtic i calculat al vol (sense taula ni camp nou) perquè un recurrent confirmat i el moviment bancari real que finalment el liquida no comptin dues vegades a la previsió; implementació efectiva a la Fase 4.
 4. **Fase 4 — Previsió**: motor de projecció, gràfic, taula, alertes de llindar. *Criteri*: la previsió a 30 dies quadra amb el que l'usuari espera manualment (±revisió conjunta). Sense despesa difusa (ajornada, veure 4.3). Desenvolupada per sub-fases:
    - **4.1 — Motor de projecció (backend)** — implementat: saldo actual (total i per compte) + recurrents confirmats -> saldo projectat dia a dia fins a l'horitzó triat, aplicant cada recurrent periòdic tantes vegades com calgui i la conciliació (3.6). `backend/src/lib/prevision.ts` (`projectaEsdeveniments`, `construeixSerieDiaria`) + `db/operations.ts` (`calculaPrevisio`) + `GET /api/previsio`.
-   - **4.2 — Sortides de consulta (frontend)** — implementat: nova pestanya "Previsió" amb selector d'horitzó (30/60/90 dies + camp lliure), gràfic de saldo projectat (total de la selecció activa) i taula cronològica dels moviments previstos. `frontend/src/views/Previsio.tsx`.
+   - **4.2 — Sortides de consulta (frontend)** — implementat: nova pestanya "Previsió" amb selector d'horitzó (30/60/90 dies, 1 any + camp lliure), gràfic de saldo projectat (total de la selecció activa) i taula cronològica dels moviments previstos, amb columna TI (com a Moviments). `frontend/src/views/Previsio.tsx`.
    - **4.3 — Alertes de llindar**: llindar global (saldo total de la selecció activa) i llindar per compte, cadascun opcional; avís a les dates en què el saldo projectat el supera per sota o es fa negatiu.
 5. **Fase 5 (opcional)**: parser Norma 43, simulacions, despesa difusa, exportacions addicionals.
 
