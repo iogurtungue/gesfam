@@ -7,6 +7,7 @@ import { ImportWizard } from './import/ImportWizard';
 import { LotsList } from './import/LotsList';
 import { AccountsManager } from './views/AccountsManager';
 import { CategoriesManager } from './views/CategoriesManager';
+import { Configuracio } from './views/Configuracio';
 import { Dashboard } from './views/Dashboard';
 import { Maintenance } from './views/Maintenance';
 import { MovimentsList } from './views/MovimentsList';
@@ -14,7 +15,17 @@ import { Previsio } from './views/Previsio';
 import { RecurrentsManager } from './views/RecurrentsManager';
 import { Summary } from './views/Summary';
 
-type Pestanya = 'panell' | 'moviments' | 'resum' | 'categories' | 'comptes' | 'importar' | 'recurrents' | 'previsio' | 'manteniment';
+type Pestanya =
+  | 'panell'
+  | 'moviments'
+  | 'resum'
+  | 'categories'
+  | 'comptes'
+  | 'importar'
+  | 'recurrents'
+  | 'previsio'
+  | 'manteniment'
+  | 'configuracio';
 
 const PESTANYES: { id: Pestanya; label: string; ambSelector: boolean }[] = [
   { id: 'panell', label: 'Panell general', ambSelector: true },
@@ -26,6 +37,7 @@ const PESTANYES: { id: Pestanya; label: string; ambSelector: boolean }[] = [
   { id: 'importar', label: 'Importar', ambSelector: false },
   { id: 'recurrents', label: 'Recurrents', ambSelector: false },
   { id: 'manteniment', label: 'Manteniment', ambSelector: false },
+  { id: 'configuracio', label: 'Configuració', ambSelector: false },
 ];
 
 function App() {
@@ -104,6 +116,7 @@ function App() {
       {pestanya === 'recurrents' && <RecurrentsManager comptes={comptes} categories={categories} />}
       {pestanya === 'previsio' && <Previsio seleccionats={seleccio.seleccionats} categories={categories} />}
       {pestanya === 'manteniment' && <Maintenance onReset={refresh} />}
+      {pestanya === 'configuracio' && <Configuracio />}
     </div>
   );
 }

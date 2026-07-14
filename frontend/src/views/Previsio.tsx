@@ -293,7 +293,13 @@ export function Previsio({ seleccionats, categories }: Props) {
                       if (c.id === e.compteId) {
                         return (
                           <Fragment key={c.id}>
-                            <td style={{ ...cellStyle, ...cellNumeric, ...colorImport(e.importCents) }}>{centsToEs(e.importCents, false)}</td>
+                            <td
+                              style={{ ...cellStyle, ...cellNumeric, ...colorImport(e.importCents) }}
+                              title={e.importAproximat ? 'Import aproximat (estimació)' : 'Import real'}
+                            >
+                              {e.importAproximat && '≈ '}
+                              {centsToEs(e.importCents, false)}
+                            </td>
                             <td style={{ ...cellStyle, ...cellNumeric, fontWeight: 'bold' }}>{saldo !== undefined ? centsToEs(saldo, false) : '—'}</td>
                           </Fragment>
                         );

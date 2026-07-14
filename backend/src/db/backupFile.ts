@@ -2,9 +2,9 @@ import { randomUUID } from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { closeDb, DADES_DIR, DB_PATH, getDb } from './client.ts';
+import { getConfiguracio } from './configuracio.ts';
 
 const BACKUPS_DIR = path.join(DADES_DIR, 'backups');
-const DEFAULT_MAX_BACKUPS = 20;
 
 function isValidBackupFilename(filename: string): boolean {
   return (
@@ -22,10 +22,12 @@ function isValidBackupFilename(filename: string): boolean {
  * Checkpoints WAL first so the copy is a complete, self-contained snapshot —
  * a plain file copy while in WAL mode could miss recent writes still sitting
  * in the -wal file. Keeps only the last `maxBackups` files (overridable for
- * tests; defaults to 20 in real use).
+ * tests; defaults to the configured `maxCopiesSeguretat`, especificacio.md 4.4).
  */
-export function backupDbFile(maxBackups = DEFAULT_MAX_BACKUPS): void {
+export function backupDbFile(maxBackups?: number): void {
   if (DB_PATH === ':memory:' || !fs.existsSync(DB_PATH)) return;
+
+  maxBackups ??= getConfiguracio().maxCopiesSeguretat;
 
   getDb().exec('PRAGMA wal_checkpoint(TRUNCATE)');
 

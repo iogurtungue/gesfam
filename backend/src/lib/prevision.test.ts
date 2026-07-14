@@ -16,6 +16,7 @@ function recurrent(overrides: Partial<RecurrentPerProjeccio> = {}): RecurrentPer
     concepte: 'CONCEPTE',
     periodicitat: 'mensual',
     importCents: -5000,
+    importAproximat: false,
     dataPrevista: '2026-07-15',
     ...overrides,
   };
@@ -55,13 +56,25 @@ describe('projectaEsdeveniments', () => {
     const esdeveniments = projectaEsdeveniments([recurrent({ dataPrevista: '2026-01-15' })], [], 30, AVUI);
 
     expect(esdeveniments).toEqual([
-      { data: '2026-07-15', compteId: 'compte-1', concepte: 'CONCEPTE', importCents: -5000, recurrentId: 'r1' },
+      {
+        data: '2026-07-15',
+        compteId: 'compte-1',
+        concepte: 'CONCEPTE',
+        importCents: -5000,
+        importAproximat: false,
+        recurrentId: 'r1',
+        categoriaId: undefined,
+        esTransferenciaInterna: undefined,
+      },
       {
         data: '2026-07-22',
         compteId: 'compte-1',
         concepte: 'CONCEPTE',
         importCents: -5000,
+        importAproximat: false,
         recurrentId: 'r1',
+        categoriaId: undefined,
+        esTransferenciaInterna: undefined,
         vençut: true,
         dataPrevistaOriginal: '2026-06-15',
       },
@@ -99,8 +112,19 @@ describe('projectaEsdeveniments', () => {
     expect(vencut).toMatchObject({ dataPrevistaOriginal: '2026-06-15' });
   });
 
-  it('skips an occurrence already conciliated by a similar real movement within a few days', () => {
-    const moviments: MovimentPerConciliacio[] = [{ compteId: 'compte-1', dataOperacio: '2026-07-14', importCents: -5100 }];
+  it('does not resolve a vençut occurrence against an unrelated real movement of merely similar amount when the recurrent is not importAproximat', () => {
+    // Regression test: within the 30-day resolution window, an unrelated real movement (different
+    // payer/client) whose amount happens to fall within the old ±15% tolerance must NOT resolve an
+    // import-cert commitment — only an exact amount counts.
+    const moviments: MovimentPerConciliacio[] = [{ compteId: 'compte-1', dataOperacio: '2026-06-20', importCents: -5100 }];
+    const esdeveniments = projectaEsdeveniments([recurrent({ dataPrevista: '2026-01-15', importAproximat: false })], moviments, 30, AVUI);
+
+    const vencut = esdeveniments.find((e) => e.vençut);
+    expect(vencut).toMatchObject({ dataPrevistaOriginal: '2026-06-15' });
+  });
+
+  it('skips an occurrence already conciliated by an exact real movement within a few days', () => {
+    const moviments: MovimentPerConciliacio[] = [{ compteId: 'compte-1', dataOperacio: '2026-07-14', importCents: -5000 }];
 
     const esdeveniments = projectaEsdeveniments([recurrent()], moviments, 60, AVUI);
 
@@ -134,6 +158,45 @@ describe('projectaEsdeveniments', () => {
     expect(esdeveniments.map((e) => e.data)).toEqual(['2026-07-15', '2026-08-15']);
   });
 
+  it('requires an exactly matching amount when the recurrent is not importAproximat, even within the old tolerance margin', () => {
+    // Regression test for a real false positive: a client-invoice recurrent (import real) was
+    // silently conciliated against an unrelated real movement just because the amount fell
+    // within ±15% and the date within the resolution window.
+    const moviments: MovimentPerConciliacio[] = [{ compteId: 'compte-1', dataOperacio: '2026-07-14', importCents: -5100 }];
+
+    const esdeveniments = projectaEsdeveniments([recurrent({ importAproximat: false })], moviments, 60, AVUI);
+
+    expect(esdeveniments.map((e) => e.data)).toEqual(['2026-07-15', '2026-08-15']);
+  });
+
+  it('conciliates within the tolerance margin when the recurrent is importAproximat', () => {
+    const moviments: MovimentPerConciliacio[] = [{ compteId: 'compte-1', dataOperacio: '2026-07-14', importCents: -5100 }];
+
+    const esdeveniments = projectaEsdeveniments([recurrent({ importAproximat: true })], moviments, 60, AVUI);
+
+    expect(esdeveniments.map((e) => e.data)).toEqual(['2026-08-15']);
+  });
+
+  it('does not conciliate when the categoria differs, even with an exact amount and date match', () => {
+    const moviments: MovimentPerConciliacio[] = [
+      { compteId: 'compte-1', dataOperacio: '2026-07-14', importCents: -5000, categoriaId: 'altra-categoria' },
+    ];
+
+    const esdeveniments = projectaEsdeveniments([recurrent({ categoriaId: 'categoria-1' })], moviments, 60, AVUI);
+
+    expect(esdeveniments.map((e) => e.data)).toEqual(['2026-07-15', '2026-08-15']);
+  });
+
+  it('conciliates when the categoria matches on both sides', () => {
+    const moviments: MovimentPerConciliacio[] = [
+      { compteId: 'compte-1', dataOperacio: '2026-07-14', importCents: -5000, categoriaId: 'categoria-1' },
+    ];
+
+    const esdeveniments = projectaEsdeveniments([recurrent({ categoriaId: 'categoria-1' })], moviments, 60, AVUI);
+
+    expect(esdeveniments.map((e) => e.data)).toEqual(['2026-08-15']);
+  });
+
   it('projects an overdue unica (not yet conciliated) 10 days after today, flagged as vençut with the original due date', () => {
     const esdeveniments = projectaEsdeveniments(
       [recurrent({ periodicitat: 'unica', dataPrevista: '2026-06-01' })],
@@ -148,7 +211,10 @@ describe('projectaEsdeveniments', () => {
         compteId: 'compte-1',
         concepte: 'CONCEPTE',
         importCents: -5000,
+        importAproximat: false,
         recurrentId: 'r1',
+        categoriaId: undefined,
+        esTransferenciaInterna: undefined,
         vençut: true,
         dataPrevistaOriginal: '2026-06-01',
       },
@@ -218,6 +284,23 @@ describe('projectaEsdeveniments', () => {
     expect(noMarcat.esTransferenciaInterna).toBeUndefined();
   });
 
+  it('propagates importAproximat from the recurrent to the projected event, including a vençut one', () => {
+    const [aproximat] = projectaEsdeveniments([recurrent({ importAproximat: true })], [], 30, AVUI);
+    expect(aproximat.importAproximat).toBe(true);
+
+    const [cert] = projectaEsdeveniments([recurrent({ importAproximat: false })], [], 30, AVUI);
+    expect(cert.importAproximat).toBe(false);
+
+    const [vençut] = projectaEsdeveniments(
+      [recurrent({ periodicitat: 'unica', dataPrevista: '2026-06-01', importAproximat: true })],
+      [],
+      30,
+      AVUI,
+    );
+    expect(vençut.vençut).toBe(true);
+    expect(vençut.importAproximat).toBe(true);
+  });
+
   it('sorts events chronologically across multiple recurrents', () => {
     const esdeveniments = projectaEsdeveniments(
       [
@@ -236,8 +319,8 @@ describe('projectaEsdeveniments', () => {
 describe('construeixSerieDiaria', () => {
   it('carries the initial balance forward and accumulates events on their date', () => {
     const esdeveniments: EsdevenimentPrevist[] = [
-      { data: '2026-07-14', compteId: 'compte-1', concepte: 'A', importCents: -1000, recurrentId: 'r1' },
-      { data: '2026-07-16', compteId: 'compte-1', concepte: 'B', importCents: 500, recurrentId: 'r2' },
+      { data: '2026-07-14', compteId: 'compte-1', concepte: 'A', importCents: -1000, importAproximat: false, recurrentId: 'r1' },
+      { data: '2026-07-16', compteId: 'compte-1', concepte: 'B', importCents: 500, importAproximat: false, recurrentId: 'r2' },
     ];
 
     const serie = construeixSerieDiaria({ 'compte-1': 10000 }, esdeveniments, 5, AVUI);
@@ -249,7 +332,7 @@ describe('construeixSerieDiaria', () => {
 
   it('sums across multiple accounts for saldoTotal while keeping saldoPerCompte separate', () => {
     const esdeveniments: EsdevenimentPrevist[] = [
-      { data: '2026-07-13', compteId: 'compte-2', concepte: 'A', importCents: -2000, recurrentId: 'r1' },
+      { data: '2026-07-13', compteId: 'compte-2', concepte: 'A', importCents: -2000, importAproximat: false, recurrentId: 'r1' },
     ];
 
     const serie = construeixSerieDiaria({ 'compte-1': 1000, 'compte-2': 5000 }, esdeveniments, 3, AVUI);

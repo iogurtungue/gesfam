@@ -161,7 +161,7 @@ export interface Recurrent {
   concepteNormalitzat: string;
   periodicitat: PeriodicitatRecurrent;
   importCents: number;
-  /** Si l'import és una estimació (patró detectat amb variació) en lloc d'un import cert conegut. */
+  /** Si l'import és una estimació (patró detectat amb variació) en lloc d'un import real conegut. */
   importAproximat: boolean;
   dataPrevista: string;
   /** Última ocurrència esperada, opcional (p. ex. un préstec o una subscripció amb data de fi coneguda). */
@@ -190,7 +190,7 @@ export interface PrevisualitzacioRecurrentsResult {
 
 export interface ImportaRecurrentsResult {
   nous: number;
-  duplicats: number;
+  eliminats: number;
 }
 
 /** Payload comú per crear/confirmar/ignorar un recurrent (especificacio.md 4.1.5, sub-fases 3.1/3.4). */
@@ -226,6 +226,7 @@ export interface EsdevenimentPrevist {
   compteId: string;
   concepte: string;
   importCents: number;
+  importAproximat: boolean;
   recurrentId: string;
   categoriaId?: string;
   esTransferenciaInterna?: boolean;
@@ -246,3 +247,17 @@ export interface Previsio {
   esdeveniments: EsdevenimentPrevist[];
   serieDiaria: PuntSerieDiaria[];
 }
+
+// --- Configuració (especificacio.md 4.4) ---
+
+/** Marges i finestres de dies que fa servir el motor de conciliació de la previsió, la finestra de suggeriment de transferències internes, i el nombre de còpies de seguretat que es conserven. */
+export interface Configuracio {
+  toleranciaImportConciliacio: number;
+  finestraConciliacioDies: number;
+  diesDesplacamentVencut: number;
+  finestraResolucioVencutDies: number;
+  diesDiferenciaTransferencies: number;
+  maxCopiesSeguretat: number;
+}
+
+export type CanvisConfiguracio = Partial<Configuracio>;

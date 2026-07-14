@@ -261,7 +261,7 @@ export function RecurrentsList({ recurrents, comptes, categories, onChanged }: P
                 <td style={{ ...cellStyle, ...cellData }}>{formatDateEs(r.dataPrevista)}</td>
                 <td style={{ ...cellStyle, ...cellData }}>{r.dataFi ? formatDateEs(r.dataFi) : '—'}</td>
                 <td style={{ ...cellStyle, ...cellConcepte }}>{r.concepte}</td>
-                <td style={{ ...cellStyle, ...cellImport }} title={r.importAproximat ? 'Import aproximat (estimació)' : 'Import cert'}>
+                <td style={{ ...cellStyle, ...cellImport }} title={r.importAproximat ? 'Import aproximat (estimació)' : 'Import real'}>
                   {r.importAproximat && '≈ '}
                   {centsToEs(r.importCents, false)}
                 </td>

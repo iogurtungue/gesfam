@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import type { DatabaseSync } from 'node:sqlite';
 import { backupDbFile } from './backupFile.ts';
 import { getDb } from './client.ts';
+import { getConfiguracio } from './configuracio.ts';
 import type {
   Categoria,
   Compte,
@@ -33,6 +34,8 @@ import {
 } from '../lib/prevision.ts';
 import type { ParsedRecurrentImport } from '../parsers/recurrentsFile.ts';
 import type { AccountType, BankId, ParsedMoviment } from '../parsers/types.ts';
+
+export { actualitzaConfiguracio, getConfiguracio, type CanvisConfiguracio } from './configuracio.ts';
 
 const DEFAULT_CATEGORIES = [
   'Habitatge',
@@ -535,6 +538,7 @@ export function suggereixTransferencies(): SuggerimentAmbDetall[] {
   const descartades = new Set(listTransferenciesDescartades().map((t) => clauParella(t.a, t.b)));
   const suggeriments = suggereixTransferenciesInternes(
     moviments.map((m) => ({ id: m.id, compteId: m.compteId, dataOperacio: m.dataOperacio, importCents: m.importCents })),
+    getConfiguracio().diesDiferenciaTransferencies,
   ).filter((s) => !descartades.has(clauParella(s.a, s.b)));
   return suggeriments.map((s) => ({ ...s, movimentA: perId.get(s.a)!, movimentB: perId.get(s.b)! }));
 }
@@ -805,7 +809,7 @@ export interface DadesRecurrent {
   concepte: string;
   periodicitat: PeriodicitatRecurrent;
   importCents: number;
-  /** Si l'import és una estimació (patró detectat amb variació) en lloc d'un import cert. Per defecte `false`. */
+  /** Si l'import és una estimació (patró detectat amb variació) en lloc d'un import real. Per defecte `false`. */
   importAproximat?: boolean;
   dataPrevista: string;
   /** Última ocurrència esperada, opcional (p. ex. un préstec o una subscripció amb data de fi coneguda). */
@@ -980,16 +984,25 @@ export function eliminaOcurrenciaPrevista(recurrentId: string, dataOcurrencia: s
 
 export interface ImportaRecurrentsResult {
   nous: number;
-  duplicats: number;
+  eliminats: number;
 }
 
 /**
  * Importa un lot de compromisos confirmats (sub-fase 3.2, especificacio.md
  * 4.2): sempre periodicitat 'unica' (un venciment puntual, p. ex. una
- * factura concreta) i origen 'importat', confirmats directament. Dedup amb
- * el mateix mecanisme que els moviments bancaris (splitNousRecurrentsIDuplicats,
- * spec 3.3): només contra ids ja existents d'una importació anterior
- * d'aquest compte. La categoria s'assigna per nom (comparació insensible a
+ * factura concreta) i origen 'importat', confirmats directament.
+ *
+ * Cada importació reflecteix l'estat actualitzat de compromisos pendents
+ * (p. ex. un llistat de factures pendents de cobrament/pagament): abans
+ * d'inserir els nous, s'eliminen TOTS els recurrents amb origen='importat'
+ * d'aquest mateix compte, encara que no coincideixin amb cap fila del
+ * fitxer actual — un compromís que ja no hi surt es considera resolt o
+ * retirat i no ha de quedar penjat a la previsió. Els recurrents manuals
+ * (origen='manual') d'aquest compte no es toquen mai.
+ *
+ * Dins del mateix fitxer, dues files coincidents (mateix import/data/concepte)
+ * es mantenen com a files separades, no es col·lapsen (splitNousRecurrentsIDuplicats,
+ * spec 3.3). La categoria s'assigna per nom (comparació insensible a
  * majúscules); si no coincideix amb cap categoria existent, es queda sense.
  */
 export function importaRecurrents(compteId: string, parsed: ParsedRecurrentImport[]): ImportaRecurrentsResult {
@@ -998,15 +1011,16 @@ export function importaRecurrents(compteId: string, parsed: ParsedRecurrentImpor
   }
 
   const db = getDb();
-  const existingIds = new Set(
-    (db.prepare('SELECT id FROM recurrents WHERE compte_id = ?').all(compteId) as { id: string }[]).map((r) => r.id),
-  );
-  const { nous, duplicats } = splitNousRecurrentsIDuplicats(compteId, parsed, existingIds);
+  const { nous } = splitNousRecurrentsIDuplicats(compteId, parsed, new Set());
+  const { n: eliminats } = db
+    .prepare("SELECT COUNT(*) as n FROM recurrents WHERE compte_id = ? AND origen = 'importat'")
+    .get(compteId) as { n: number };
 
-  if (nous.length > 0) {
+  if (eliminats > 0 || nous.length > 0) {
     backupDbFile();
     const categoriesPerNom = new Map(listCategories().map((c) => [c.nom.toLowerCase(), c.id]));
     transaction(db, () => {
+      db.prepare("DELETE FROM recurrents WHERE compte_id = ? AND origen = 'importat'").run(compteId);
       const insert = db.prepare(
         `INSERT INTO recurrents
           (id, compte_id, concepte, concepte_normalitzat, periodicitat, import_cents, data_prevista, categoria_id, referencia, origen, estat)
@@ -1028,7 +1042,7 @@ export function importaRecurrents(compteId: string, parsed: ParsedRecurrentImpor
     });
   }
 
-  return { nous: nous.length, duplicats };
+  return { nous: nous.length, eliminats };
 }
 
 // --- Motor de previsió (especificacio.md 4.3, sub-fase 4.1) ---
@@ -1067,9 +1081,38 @@ function calculaSaldosActuals(comptes: Compte[]): Record<string, number> {
   return saldos;
 }
 
-export function calculaPrevisio(compteIds: string[], horitzoDies: number, avui: string = isoAvui()): Previsio {
+/**
+ * Data efectiva d'"avui" per al motor de previsió (especificacio.md 4.3): en
+ * lloc de la data real, es fa servir la data de l'últim moviment importat de
+ * cada compte seleccionat (la més antiga entre tots, si n'hi ha diversos),
+ * perquè la previsió tingui sentit encara que les dades del compte no
+ * estiguin actualitzades a dia d'avui — els dies entre l'última importació i
+ * avui passen a formar part de la projecció en lloc de quedar buits. Un
+ * compte sense cap moviment importat encara aporta la data real d'avui (no
+ * hi ha cap referència més antiga possible per a ell).
+ */
+function calculaAvuiPrevisio(comptes: Compte[]): string {
+  const avuiReal = isoAvui();
+  const db = getDb();
+  const datesPerCompte = comptes.map((c) => {
+    const row = db.prepare('SELECT MAX(data_operacio) AS data FROM moviments WHERE compte_id = ?').get(c.id) as { data: string | null };
+    return row.data ?? avuiReal;
+  });
+  return datesPerCompte.reduce((min, data) => (data < min ? data : min), avuiReal);
+}
+
+export function calculaPrevisio(compteIds: string[], horitzoDies: number, avui?: string): Previsio {
   const comptes = listComptes().filter((c) => compteIds.includes(c.id));
   if (comptes.length === 0) return { saldosInicials: {}, esdeveniments: [], serieDiaria: [] };
+
+  const avuiCompartit = avui ?? calculaAvuiPrevisio(comptes);
+  const configuracio = getConfiguracio();
+  const configConciliacio = {
+    finestraConciliacioDies: configuracio.finestraConciliacioDies,
+    toleranciaImportConciliacio: configuracio.toleranciaImportConciliacio,
+    diesDesplacamentVencut: configuracio.diesDesplacamentVencut,
+    finestraResolucioVencutDies: configuracio.finestraResolucioVencutDies,
+  };
 
   const saldosInicials = calculaSaldosActuals(comptes);
 
@@ -1081,6 +1124,7 @@ export function calculaPrevisio(compteIds: string[], horitzoDies: number, avui: 
       concepte: r.concepte,
       periodicitat: r.periodicitat,
       importCents: r.importCents,
+      importAproximat: r.importAproximat,
       dataPrevista: r.dataPrevista,
       dataFi: r.dataFi,
       categoriaId: r.categoriaId,
@@ -1089,10 +1133,26 @@ export function calculaPrevisio(compteIds: string[], horitzoDies: number, avui: 
 
   const movimentsPerConciliacio: MovimentPerConciliacio[] = listMovimentsPerComptes(compteIds)
     .filter((m) => !m.esTransferenciaInterna)
-    .map((m) => ({ compteId: m.compteId, dataOperacio: m.dataOperacio, importCents: m.importCents }));
+    .map((m) => ({ compteId: m.compteId, dataOperacio: m.dataOperacio, importCents: m.importCents, categoriaId: m.categoriaId }));
 
-  const esdeveniments = projectaEsdeveniments(recurrents, movimentsPerConciliacio, horitzoDies, avui);
-  const serieDiaria = construeixSerieDiaria(saldosInicials, esdeveniments, horitzoDies, avui);
+  // Cada compte projecta els seus propis recurrents amb la seva pròpia data
+  // d'"avui" (o l'`avui` explícit, si se n'ha passat un) — mai la compartida
+  // de tota la selecció — perquè si un compte és vençut o no, i on es
+  // desplaça, no depengui de si un altre compte sense cap relació té dades
+  // més velles o més noves seleccionat alhora.
+  const esdeveniments = comptes
+    .flatMap((c) =>
+      projectaEsdeveniments(
+        recurrents.filter((r) => r.compteId === c.id),
+        movimentsPerConciliacio,
+        horitzoDies,
+        avui ?? calculaAvuiPrevisio([c]),
+        configConciliacio,
+      ),
+    )
+    .sort((a, b) => a.data.localeCompare(b.data) || a.compteId.localeCompare(b.compteId));
+
+  const serieDiaria = construeixSerieDiaria(saldosInicials, esdeveniments, horitzoDies, avuiCompartit);
 
   return { saldosInicials, esdeveniments, serieDiaria };
 }

@@ -15,7 +15,7 @@ export function RecurrentsImportWizard({ comptes, onChanged }: Props) {
   const [fileName, setFileName] = useState<string | null>(null);
   const [recurrents, setRecurrents] = useState<ParsedRecurrentImport[]>([]);
   const [warnings, setWarnings] = useState<string[]>([]);
-  const [summary, setSummary] = useState<{ nous: number; duplicats: number } | null>(null);
+  const [summary, setSummary] = useState<{ nous: number; eliminats: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -56,6 +56,10 @@ export function RecurrentsImportWizard({ comptes, onChanged }: Props) {
       <p style={{ fontSize: 12, color: '#555' }}>
         Factures o altres compromisos amb import i data de venciment ja coneguts (no estimats). Excel amb columnes: Data de venciment,
         Concepte, Import, i opcionalment Categoria i Referència.
+      </p>
+      <p style={{ fontSize: 12, color: '#a60' }}>
+        En confirmar, s'eliminaran tots els compromisos importats anteriorment d'aquest compte i seran substituïts pels d'aquest fitxer
+        (el fitxer reflecteix l'estat actual de compromisos pendents). Els recurrents manuals no es veuen afectats.
       </p>
       <label>
         Compte:{' '}
@@ -121,7 +125,7 @@ export function RecurrentsImportWizard({ comptes, onChanged }: Props) {
 
       {summary && (
         <div style={{ border: '1px solid #2a2', padding: 12, marginTop: 12 }}>
-          <strong>{fileName}</strong>: {summary.nous} compromisos nous, {summary.duplicats} duplicats ignorats.
+          <strong>{fileName}</strong>: {summary.nous} compromisos importats, {summary.eliminats} importats anteriors eliminats.
         </div>
       )}
     </section>

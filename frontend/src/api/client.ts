@@ -3,10 +3,12 @@ import type {
   Backup,
   BackupFileInfo,
   BankId,
+  CanvisConfiguracio,
   Categoria,
   ColumnMapping,
   CommitImportResult,
   Compte,
+  Configuracio,
   DadesRecurrent,
   ImportaRecurrentsResult,
   ImportOutcome,
@@ -272,6 +274,16 @@ export function creaCopiaSeguretatDb(): Promise<BackupFileInfo | null> {
 
 export function restoreBackup(filename: string): Promise<void> {
   return req(`/manteniment/backups/${encodeURIComponent(filename)}/restaura`, { method: 'POST' });
+}
+
+// --- Configuració (especificacio.md 4.4) ---
+
+export function getConfiguracio(): Promise<Configuracio> {
+  return req('/configuracio');
+}
+
+export function actualitzaConfiguracio(canvis: CanvisConfiguracio): Promise<Configuracio> {
+  return req('/configuracio', { method: 'PATCH', ...json(canvis) });
 }
 
 // --- Importació (spec 3.1) — parsing/dedup happen on the backend now ---

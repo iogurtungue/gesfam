@@ -316,6 +316,20 @@ router.post('/manteniment/reinicialitza', (_req, res) => {
   res.json({ ok: true });
 });
 
+// --- Configuració (especificacio.md 4.4) ---
+
+router.get('/configuracio', (_req, res) => {
+  res.json(ops.getConfiguracio());
+});
+
+router.patch('/configuracio', (req, res) => {
+  try {
+    res.json(ops.actualitzaConfiguracio(req.body as ops.CanvisConfiguracio));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
 // --- Importació (spec 3.1) ---
 
 router.post('/importacio/previsualitza', upload.single('fitxer'), async (req, res) => {

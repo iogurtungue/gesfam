@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { afegeixDies, isoAvui } from '../lib/dates.ts';
 import type { ParsedRecurrentImport } from '../parsers/recurrentsFile.ts';
 import type { ParsedMoviment } from '../parsers/types.ts';
 
@@ -6,8 +7,10 @@ process.env.GESFAM_DB_PATH = ':memory:';
 const { getDb } = await import('./client.ts');
 const {
   actualitzaCompte,
+  actualitzaConfiguracio,
   actualitzaRecurrent,
   actualitzaRegla,
+  calculaPrevisio,
   commitImport,
   confirmaTransferencia,
   countMovimentsCompte,
@@ -47,6 +50,16 @@ const {
 beforeEach(() => {
   getDb().exec(
     'DELETE FROM recurrents; DELETE FROM transferencies_descartades; DELETE FROM moviments; DELETE FROM lots; DELETE FROM regles; DELETE FROM regles_liquidacio; DELETE FROM categories; DELETE FROM comptes;',
+  );
+  getDb().exec(
+    `UPDATE configuracio SET
+      tolerancia_import_conciliacio = 0.15,
+      finestra_conciliacio_dies = 3,
+      dies_desplacament_vencut = 10,
+      finestra_resolucio_vencut_dies = 30,
+      dies_diferencia_transferencies = 2,
+      max_copies_seguretat = 20
+     WHERE id = 1`,
   );
 });
 
@@ -722,10 +735,10 @@ describe('importaRecurrents (sub-fase 3.2, especificacio.md 4.2)', () => {
   it('imports a new invoice as origen=importat, estat=confirmat, periodicitat=unica', () => {
     const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
 
-    const { nous, duplicats } = importaRecurrents(compte.id, [factura()]);
+    const { nous, eliminats } = importaRecurrents(compte.id, [factura()]);
 
     expect(nous).toBe(1);
-    expect(duplicats).toBe(0);
+    expect(eliminats).toBe(0);
     const [recurrent] = listRecurrents();
     expect(recurrent).toMatchObject({
       compteId: compte.id,
@@ -765,39 +778,264 @@ describe('importaRecurrents (sub-fase 3.2, especificacio.md 4.2)', () => {
     expect(listRecurrents()[0].referencia).toBe('FRA-2026-0042');
   });
 
-  it('re-importing the same file does not duplicate rows', () => {
+  it('re-importing the exact same file replaces the underlying row (same net content)', () => {
     const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
     importaRecurrents(compte.id, [factura()]);
 
-    const { nous, duplicats } = importaRecurrents(compte.id, [factura()]);
+    const { nous, eliminats } = importaRecurrents(compte.id, [factura()]);
 
-    expect(nous).toBe(0);
-    expect(duplicats).toBe(1);
+    expect(nous).toBe(1);
+    expect(eliminats).toBe(1);
     expect(listRecurrents()).toHaveLength(1);
   });
 
   it('keeps two coincidentally identical invoices in the same batch as separate rows', () => {
     const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
 
-    const { nous, duplicats } = importaRecurrents(compte.id, [factura(), factura()]);
+    const { nous, eliminats } = importaRecurrents(compte.id, [factura(), factura()]);
 
     expect(nous).toBe(2);
-    expect(duplicats).toBe(0);
+    expect(eliminats).toBe(0);
     expect(listRecurrents()).toHaveLength(2);
+  });
+
+  it('removes a previously imported invoice that no longer appears in a new import of the same compte (no longer pending)', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    importaRecurrents(compte.id, [factura(), factura({ concepte: 'Altra factura', dataPrevista: '2026-10-01' })]);
+    expect(listRecurrents()).toHaveLength(2);
+
+    const { nous, eliminats } = importaRecurrents(compte.id, [factura()]);
+
+    expect(nous).toBe(1);
+    expect(eliminats).toBe(2);
+    expect(listRecurrents()).toHaveLength(1);
+  });
+
+  it('does not delete importats from other comptes nor manual recurrents from the same compte', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const altreCompte = createCompte({ banc: 'bbva', tipus: 'corrent', alias: 'Altre' });
+    importaRecurrents(altreCompte.id, [factura()]);
+    creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'NETFLIX',
+      periodicitat: 'mensual',
+      importCents: -1200,
+      dataPrevista: '2026-05-05',
+    });
+
+    const { nous, eliminats } = importaRecurrents(compte.id, [factura()]);
+
+    expect(nous).toBe(1);
+    expect(eliminats).toBe(0);
+    expect(listRecurrents()).toHaveLength(3);
   });
 
   it('throws for a compte that does not exist', () => {
     expect(() => importaRecurrents('no-existeix', [factura()])).toThrow();
   });
 
-  it('does not touch the database when every row is a duplicate (no-op backup)', () => {
+  it('does not touch the database when there is nothing to import and nothing to delete', () => {
     const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
-    importaRecurrents(compte.id, [factura()]);
 
-    const { nous, duplicats } = importaRecurrents(compte.id, [factura()]);
+    const { nous, eliminats } = importaRecurrents(compte.id, []);
 
     expect(nous).toBe(0);
-    expect(duplicats).toBe(1);
+    expect(eliminats).toBe(0);
+    expect(listRecurrents()).toHaveLength(0);
+  });
+});
+
+describe('calculaPrevisio: data efectiva "avui" per compte (especificacio.md 4.3)', () => {
+  it('anchors the projection to the date of the last imported movement, not the real today, when the account has stale data', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    commitImport(compte, [mov('2026-06-01', 'Últim moviment importat', -100)], 'extracte.txt');
+    creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Factura',
+      periodicitat: 'unica',
+      importCents: -5000,
+      dataPrevista: '2026-06-10',
+    });
+
+    const previsio = calculaPrevisio([compte.id], 30);
+
+    // Relatiu a la data real d'avui (molt posterior), aquest venciment ja fa
+    // temps que hauria passat; però relatiu a l'última importació (2026-06-01)
+    // encara és una ocurrència futura dins l'horitzó, no un "vençut".
+    expect(previsio.esdeveniments).toHaveLength(1);
+    expect(previsio.esdeveniments[0].data).toBe('2026-06-10');
+    expect(previsio.esdeveniments[0].vençut).toBeUndefined();
+  });
+
+  it('excludes an occurrence beyond horitzoDies counted from the last import date, even if it would fall within horitzoDies of the real today', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    commitImport(compte, [mov('2026-06-01', 'Últim moviment importat', -100)], 'extracte.txt');
+    creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Factura llunyana',
+      periodicitat: 'unica',
+      importCents: -5000,
+      dataPrevista: '2026-07-05',
+    });
+
+    const previsio = calculaPrevisio([compte.id], 30);
+
+    expect(previsio.esdeveniments).toHaveLength(0);
+  });
+
+  it('falls back to the real today date when the account has no imported movements yet', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Nou' });
+    const dataPrevistaVençuda = afegeixDies(isoAvui(), -5);
+    creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Factura',
+      periodicitat: 'unica',
+      importCents: -5000,
+      dataPrevista: dataPrevistaVençuda,
+    });
+
+    const previsio = calculaPrevisio([compte.id], 30);
+
+    expect(previsio.esdeveniments).toHaveLength(1);
+    expect(previsio.esdeveniments[0].vençut).toBe(true);
+    expect(previsio.esdeveniments[0].dataPrevistaOriginal).toBe(dataPrevistaVençuda);
+  });
+
+  it('anchors each recurrent to its own account\'s last-import date, unaffected by another selected account\'s date', () => {
+    const antic = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Antic' });
+    const recent = createCompte({ banc: 'bbva', tipus: 'corrent', alias: 'Recent' });
+    commitImport(antic, [mov('2026-06-01', 'Últim moviment de l\'antic', -100)], 'antic.txt');
+    commitImport(recent, [mov('2026-06-20', 'Últim moviment del recent', -100)], 'recent.txt');
+    creaRecurrentManual({
+      compteId: recent.id,
+      concepte: 'Factura',
+      periodicitat: 'unica',
+      importCents: -5000,
+      dataPrevista: '2026-06-10',
+    });
+
+    const previsioNomesRecent = calculaPrevisio([recent.id], 30);
+    const previsioTotsDos = calculaPrevisio([antic.id, recent.id], 30);
+
+    // El venciment (06-10) és anterior a la data pròpia del compte "recent"
+    // (06-20), així que és vençut tant si es consulta sol com combinat amb
+    // "antic" (01-06) — abans, seleccionar-los junts feia servir la data més
+    // antiga entre tots dos i el feia deixar de ser vençut, purament perquè
+    // un compte sense cap relació tenia dades més velles.
+    for (const previsio of [previsioNomesRecent, previsioTotsDos]) {
+      const [esdeveniment] = previsio.esdeveniments.filter((e) => e.concepte === 'Factura');
+      expect(esdeveniment.vençut).toBe(true);
+      expect(esdeveniment.dataPrevistaOriginal).toBe('2026-06-10');
+    }
+  });
+
+  it('an explicit avui override still takes precedence over the last-import-date default', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    commitImport(compte, [mov('2026-06-01', 'Últim moviment importat', -100)], 'extracte.txt');
+    creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Factura',
+      periodicitat: 'unica',
+      importCents: -5000,
+      dataPrevista: '2026-06-10',
+    });
+
+    const previsio = calculaPrevisio([compte.id], 30, '2026-07-01');
+
+    expect(previsio.esdeveniments[0]).toMatchObject({ vençut: true, dataPrevistaOriginal: '2026-06-10' });
+  });
+});
+
+describe('calculaPrevisio: paràmetres de conciliació configurables (especificacio.md 4.4)', () => {
+  it('respects a configured toleranciaImportConciliacio wider than the default', () => {
+    actualitzaConfiguracio({ toleranciaImportConciliacio: 0.5 });
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Factura',
+      periodicitat: 'unica',
+      importCents: -10000,
+      importAproximat: true,
+      dataPrevista: '2026-06-10',
+    });
+    commitImport(compte, [mov('2026-06-10', 'Pagament', -14000)], 'extracte.txt');
+
+    const previsio = calculaPrevisio([compte.id], 30, '2026-06-05');
+
+    // 40% de diferència: amb el marge per defecte (15%) no conciliaria, però
+    // amb el marge configurat (50%) sí, i l'esdeveniment ja no es projecta.
+    expect(previsio.esdeveniments).toHaveLength(0);
+  });
+
+  it('respects a configured finestraConciliacioDies narrower than the default', () => {
+    actualitzaConfiguracio({ finestraConciliacioDies: 1 });
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Factura',
+      periodicitat: 'unica',
+      importCents: -5000,
+      dataPrevista: '2026-06-10',
+    });
+    commitImport(compte, [mov('2026-06-12', 'Pagament', -5000)], 'extracte.txt');
+
+    const previsio = calculaPrevisio([compte.id], 30, '2026-06-05');
+
+    // Amb la finestra per defecte (3 dies) conciliaria (2 dies de diferència,
+    // import exacte); amb la finestra configurada (1 dia) ja no.
+    expect(previsio.esdeveniments).toHaveLength(1);
+  });
+
+  it('respects a configured diesDesplacamentVencut for a vençut occurrence', () => {
+    actualitzaConfiguracio({ diesDesplacamentVencut: 3 });
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Factura',
+      periodicitat: 'unica',
+      importCents: -5000,
+      dataPrevista: '2026-06-01',
+    });
+
+    const previsio = calculaPrevisio([compte.id], 30, '2026-06-10');
+
+    expect(previsio.esdeveniments[0].vençut).toBe(true);
+    expect(previsio.esdeveniments[0].data).toBe('2026-06-13');
+  });
+
+  it('respects a configured finestraResolucioVencutDies narrower than the default when resolving a vençut occurrence', () => {
+    actualitzaConfiguracio({ finestraResolucioVencutDies: 5 });
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Factura',
+      periodicitat: 'unica',
+      importCents: -5000,
+      dataPrevista: '2026-06-01',
+    });
+    commitImport(compte, [mov('2026-06-07', 'Pagament', -5000)], 'extracte.txt');
+
+    const previsio = calculaPrevisio([compte.id], 30, '2026-06-10');
+
+    // El pagament arriba 6 dies després del venciment: amb la finestra per
+    // defecte (30 dies) resoldria el vençut; amb la configurada (5 dies) no,
+    // així que segueix projectant-se com a vençut.
+    expect(previsio.esdeveniments).toHaveLength(1);
+    expect(previsio.esdeveniments[0].vençut).toBe(true);
+  });
+
+  it('suggereixTransferencies respects a configured diesDiferenciaTransferencies narrower than the default', () => {
+    actualitzaConfiguracio({ diesDiferenciaTransferencies: 1 });
+    const a = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'A' });
+    const b = createCompte({ banc: 'bbva', tipus: 'corrent', alias: 'B' });
+    commitImport(a, [mov('2026-06-01', 'Transferència sortint', -10000)], 'a.txt');
+    commitImport(b, [mov('2026-06-03', 'Transferència entrant', 10000)], 'b.txt');
+
+    const suggeriments = suggereixTransferencies();
+
+    // 2 dies de diferència: amb la finestra per defecte (2 dies) se suggeriria;
+    // amb la configurada (1 dia) ja no.
+    expect(suggeriments).toHaveLength(0);
   });
 });
 

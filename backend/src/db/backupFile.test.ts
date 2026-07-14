@@ -55,6 +55,21 @@ describe('backupDbFile', () => {
     const backups = fs.readdirSync(path.join(dadesDir, 'backups'));
     expect(backups).toHaveLength(3);
   });
+
+  it('defaults to the configured maxCopiesSeguretat (especificacio.md 4.4) when no override is given', async () => {
+    const { getDb } = await import('./client.ts');
+    const { actualitzaConfiguracio } = await import('./configuracio.ts');
+    const { backupDbFile } = await import('./backupFile.ts');
+    getDb();
+    actualitzaConfiguracio({ maxCopiesSeguretat: 2 });
+
+    for (let i = 0; i < 5; i++) {
+      backupDbFile();
+    }
+
+    const backups = fs.readdirSync(path.join(dadesDir, 'backups'));
+    expect(backups).toHaveLength(2);
+  });
 });
 
 describe('listBackupFiles', () => {

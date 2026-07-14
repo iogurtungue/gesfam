@@ -92,8 +92,8 @@ function RestauraCopies({ onRestaurat }: { onRestaurat: () => void }) {
     <div style={{ border: '1px solid #999', padding: 12, marginBottom: 16 }}>
       <h3>Còpies de seguretat automàtiques</h3>
       <p>
-        Còpies del fitxer de dades fetes automàticament abans de cada importació o operació destructiva (es conserven les
-        20 més recents). Restaurar-ne una substitueix totes les dades actuals.
+        Còpies del fitxer de dades fetes automàticament abans de cada importació o operació destructiva (el nombre que es
+        conserva es configura a la pestanya "Configuració"). Restaurar-ne una substitueix totes les dades actuals.
       </p>
       <p>
         <button onClick={handleCrea} disabled={creant}>

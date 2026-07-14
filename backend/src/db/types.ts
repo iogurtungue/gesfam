@@ -98,7 +98,7 @@ export interface Recurrent {
   periodicitat: PeriodicitatRecurrent;
   /** Cèntims, amb signe: negatiu = despesa, positiu = ingrés. */
   importCents: number;
-  /** Si `importCents` és una estimació (p. ex. mediana d'un patró detectat amb variació entre ocurrències) en lloc d'un import cert conegut (factura, ingrés fix). Per defecte `false`; l'usuari el pot marcar/desmarcar en confirmar o corregir un recurrent. */
+  /** Si `importCents` és una estimació (p. ex. mediana d'un patró detectat amb variació entre ocurrències) en lloc d'un import real conegut (factura, ingrés fix). Per defecte `false`; l'usuari el pot marcar/desmarcar en confirmar o corregir un recurrent. */
   importAproximat: boolean;
   /** ISO date: per a `unica`, la data de venciment; per a periodicitats repetitives, la propera ocurrència prevista (les següents es calculen a partir d'aquesta, Fase 4). */
   dataPrevista: string;
@@ -112,4 +112,20 @@ export interface Recurrent {
   estat: EstatRecurrent;
   /** Si aquest recurrent representa un moviment entre comptes propis (mateix concepte que `Moviment.esTransferenciaInterna`), per poder-lo filtrar a la pestanya de Recurrents i a la previsió. Per defecte `false`. */
   esTransferenciaInterna?: boolean;
+}
+
+/** Configuració global de l'aplicació (fila única, especificacio.md 4.4): marges i finestres de dies que fa servir el motor de conciliació de la previsió, la finestra de suggeriment de transferències internes, i el nombre de còpies de seguretat que es conserven. Editable des de la pestanya "Configuració". */
+export interface Configuracio {
+  /** Marge d'import (fracció, p. ex. 0.15 = 15%) només aplicable a un recurrent amb import aproximat; un import real sempre exigeix coincidència exacta. */
+  toleranciaImportConciliacio: number;
+  /** Dies al voltant de la data prevista dins els quals un moviment real es considera la liquidació d'un recurrent encara no vençut. */
+  finestraConciliacioDies: number;
+  /** Dies després d'avui on es mostra desplaçada una ocurrència vençuda encara no conciliada. */
+  diesDesplacamentVencut: number;
+  /** Dies des del venciment original dins els quals un moviment real encara es reconeix com la liquidació d'una ocurrència ja vençuda. */
+  finestraResolucioVencutDies: number;
+  /** Dies de diferència màxima entre dos moviments de signe oposat i mateix import perquè se suggereixin com a transferència interna. */
+  diesDiferenciaTransferencies: number;
+  /** Nombre de còpies de seguretat automàtiques (`.db`) que es conserven; les més antigues s'esborren en superar-lo. */
+  maxCopiesSeguretat: number;
 }
