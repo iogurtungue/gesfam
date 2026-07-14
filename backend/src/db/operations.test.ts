@@ -867,15 +867,39 @@ describe('calculaPrevisio: data efectiva "avui" per compte (especificacio.md 4.3
     expect(previsio.esdeveniments[0].vençut).toBeUndefined();
   });
 
-  it('excludes an occurrence beyond horitzoDies counted from the last import date, even if it would fall within horitzoDies of the real today', () => {
+  it('counts horitzoDies from the real today, not from the (possibly stale) last-import anchor, so a near occurrence is not excluded just because the account is stale', () => {
     const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
-    commitImport(compte, [mov('2026-06-01', 'Últim moviment importat', -100)], 'extracte.txt');
+    const dataImport = afegeixDies(isoAvui(), -40);
+    commitImport(compte, [mov(dataImport, 'Últim moviment importat', -100)], 'extracte.txt');
+    const dataPrevista = afegeixDies(isoAvui(), 10);
+    creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Factura propera',
+      periodicitat: 'unica',
+      importCents: -5000,
+      dataPrevista,
+    });
+
+    // Comptada des de l'àncora (dataImport, fa 40 dies), un horitzó de 30
+    // dies ja hauria quedat curt fa temps (el límit seria 10 dies enrere);
+    // però comptada des d'avui de veritat (com ha de ser), 10 dies vista cau
+    // ben dins l'horitzó.
+    const previsio = calculaPrevisio([compte.id], 30);
+
+    expect(previsio.esdeveniments).toHaveLength(1);
+    expect(previsio.esdeveniments[0].data).toBe(dataPrevista);
+    expect(previsio.esdeveniments[0].vençut).toBeUndefined();
+  });
+
+  it('still excludes an occurrence beyond horitzoDies of the real today', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    commitImport(compte, [mov(isoAvui(), 'Últim moviment importat', -100)], 'extracte.txt');
     creaRecurrentManual({
       compteId: compte.id,
       concepte: 'Factura llunyana',
       periodicitat: 'unica',
       importCents: -5000,
-      dataPrevista: '2026-07-05',
+      dataPrevista: afegeixDies(isoAvui(), 31),
     });
 
     const previsio = calculaPrevisio([compte.id], 30);

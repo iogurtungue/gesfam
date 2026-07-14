@@ -314,6 +314,21 @@ describe('projectaEsdeveniments', () => {
 
     expect(esdeveniments.map((e) => e.recurrentId)).toEqual(['r1', 'r2']);
   });
+
+  it('counts horitzoDies from avuiReal, not from the (possibly earlier) anchor avui', () => {
+    const anticAncora = '2026-06-01';
+    const avuiReal = '2026-07-12';
+    // A 25 dies vista d'avui de veritat, però a més de 30 dies de l'àncora
+    // (que és d'un mes abans): amb un horitzó de 30 dies comptat des de
+    // l'àncora quedaria fora; comptat des d'avuiReal (com ha de ser), hi cau.
+    const propAvuiReal = recurrent({ periodicitat: 'unica', dataPrevista: '2026-08-06' });
+
+    const ambAvuiReal = projectaEsdeveniments([propAvuiReal], [], 30, anticAncora, undefined, avuiReal);
+    expect(ambAvuiReal.map((e) => e.data)).toEqual(['2026-08-06']);
+
+    const senseAvuiReal = projectaEsdeveniments([propAvuiReal], [], 30, anticAncora);
+    expect(senseAvuiReal).toEqual([]);
+  });
 });
 
 describe('construeixSerieDiaria', () => {

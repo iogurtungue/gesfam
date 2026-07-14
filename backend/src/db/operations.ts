@@ -19,7 +19,7 @@ import { splitNousIDuplicats } from '../dedup/index.ts';
 import { splitNousRecurrentsIDuplicats } from '../dedup/recurrents.ts';
 import { pickCategoriaId } from '../lib/categorization.ts';
 import { normalizeConceptForDedup } from '../lib/concept.ts';
-import { isoAvui } from '../lib/dates.ts';
+import { diesEntre, isoAvui } from '../lib/dates.ts';
 import { computeContrapartidaId } from '../lib/hash.ts';
 import { suggereixTransferenciesInternes, type SuggerimentTransferencia } from '../lib/internalTransfers.ts';
 import { pickTargetaLiquidacio } from '../lib/liquidacioTargeta.ts';
@@ -1105,6 +1105,12 @@ export function calculaPrevisio(compteIds: string[], horitzoDies: number, avui?:
   const comptes = listComptes().filter((c) => compteIds.includes(c.id));
   if (comptes.length === 0) return { saldosInicials: {}, esdeveniments: [], serieDiaria: [] };
 
+  // L'horitzó (30/60/90 dies, 1 any) sempre es compta a partir d'AVUI DE
+  // VERITAT (`avuiReal`), mai de l'àncora per compte (última importació):
+  // si no, un compte amb dades desactualitzades retallaria l'horitzó abans
+  // d'hora i faria desaparèixer moviments propers només perquè aquell compte
+  // fa temps que no s'importa.
+  const avuiReal = avui ?? isoAvui();
   const avuiCompartit = avui ?? calculaAvuiPrevisio(comptes);
   const configuracio = getConfiguracio();
   const configConciliacio = {
@@ -1148,11 +1154,17 @@ export function calculaPrevisio(compteIds: string[], horitzoDies: number, avui?:
         horitzoDies,
         avui ?? calculaAvuiPrevisio([c]),
         configConciliacio,
+        avuiReal,
       ),
     )
     .sort((a, b) => a.data.localeCompare(b.data) || a.compteId.localeCompare(b.compteId));
 
-  const serieDiaria = construeixSerieDiaria(saldosInicials, esdeveniments, horitzoDies, avuiCompartit);
+  // La sèrie diària parteix de la mateixa àncora compartida que abans
+  // (`avuiCompartit`, per mostrar l'evolució des d'allà), però ha d'arribar
+  // fins al mateix límit real que els esdeveniments (`avuiReal + horitzoDies`),
+  // no només `horitzoDies` dies des de l'àncora si aquesta és anterior.
+  const diesSerie = diesEntre(avuiCompartit, avuiReal) + horitzoDies;
+  const serieDiaria = construeixSerieDiaria(saldosInicials, esdeveniments, diesSerie, avuiCompartit);
 
   return { saldosInicials, esdeveniments, serieDiaria };
 }

@@ -169,6 +169,14 @@ function esdevenimentVencut(r: RecurrentPerProjeccio, dataOriginal: string, avui
  * pestanya "Configuració" (especificacio.md 4.4); aquest mòdul es manté pur
  * — no llegeix ni escriu la base de dades, `db/operations.ts` és qui llegeix
  * `configuracio` i la passa aquí.
+ *
+ * `avui` és l'àncora per compte (última importació, espec. 4.3) que decideix
+ * què és "vençut" i des d'on es posen al dia les ocurrències periòdiques
+ * passades. `avuiReal` (per defecte el mateix `avui`, si no se'n passa cap)
+ * és sempre la data real d'avui: l'horitzó (`horitzoDies`) es compta SEMPRE
+ * a partir d'aquesta, mai de l'àncora, perquè el selector d'Horitzó de la UI
+ * (30/60/90 dies, 1 any) representi els propers N dies reals i no es
+ * retalli per un compte amb dades desactualitzades.
  */
 export function projectaEsdeveniments(
   recurrents: RecurrentPerProjeccio[],
@@ -176,8 +184,9 @@ export function projectaEsdeveniments(
   horitzoDies: number,
   avui: string = isoAvui(),
   config: ConfiguracioConciliacio = CONFIGURACIO_CONCILIACIO_DEFECTE,
+  avuiReal: string = avui,
 ): EsdevenimentPrevist[] {
-  const dataLimit = afegeixDies(avui, horitzoDies);
+  const dataLimit = afegeixDies(avuiReal, horitzoDies);
   const esdeveniments: EsdevenimentPrevist[] = [];
 
   for (const r of recurrents) {
