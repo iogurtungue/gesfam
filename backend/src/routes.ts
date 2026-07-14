@@ -138,6 +138,14 @@ router.post('/regles/aplica', (_req, res) => {
   res.json({ actualitzats: ops.aplicaReglesAMovimentsSenseCategoria() });
 });
 
+router.post('/regles/:id/aplica-forcada', (req, res) => {
+  try {
+    res.json({ actualitzats: ops.aplicaReglaForçada(req.params.id) });
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
 // --- Transferències internes ---
 
 router.get('/transferencies/suggeriments', (_req, res) => {

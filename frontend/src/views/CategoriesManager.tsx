@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import {
   actualitzaRegla,
+  aplicaReglaForçada,
   aplicaReglesAMovimentsSenseCategoria,
   createCategoria,
   createRegla,
@@ -27,6 +28,8 @@ export function CategoriesManager({ categories, regles, onChanged }: Props) {
   const [errorRegla, setErrorRegla] = useState<string | null>(null);
   const [editantRegla, setEditantRegla] = useState<string | null>(null);
   const [edicioRegla, setEdicioRegla] = useState<{ patro: string; categoriaId: string } | null>(null);
+  const [forçantRegla, setForçantRegla] = useState<string | null>(null);
+  const [missatgeForcat, setMissatgeForcat] = useState<string | null>(null);
 
   // `novaCategoriaRegla` només s'inicialitza un cop (useState); si la
   // categoria seleccionada desapareix (esborrada) o encara no n'hi ha cap
@@ -115,6 +118,27 @@ export function CategoriesManager({ categories, regles, onChanged }: Props) {
     onChanged();
   }
 
+  async function handleForcaRegla(r: ReglaCategoritzacio) {
+    if (
+      !confirm(
+        `Forçar la regla "${r.patro}" → ${categoriaNom(r.categoriaId)} sobreescriurà la categoria de TOTS els moviments ` +
+          "el concepte dels quals coincideixi amb aquest patró, encara que ja tinguin una categoria assignada (inclosa una " +
+          'manual). Continuar?',
+      )
+    ) {
+      return;
+    }
+    setForçantRegla(r.id);
+    setMissatgeForcat(null);
+    try {
+      const n = await aplicaReglaForçada(r.id);
+      setMissatgeForcat(`Regla "${r.patro}": ${n} moviments actualitzats.`);
+      onChanged();
+    } finally {
+      setForçantRegla(null);
+    }
+  }
+
   const categoriaNom = (id: string) => categories.find((c) => c.id === id)?.nom ?? `⚠ categoria inexistent (${id})`;
 
   const reglesOrdenades = [...regles].sort(
@@ -175,12 +199,20 @@ export function CategoriesManager({ categories, regles, onChanged }: Props) {
             ) : (
               <>
                 {categoriaNom(r.categoriaId)} ← "{r.patro}" <button onClick={() => iniciaEdicioRegla(r)}>Edita</button>{' '}
-                <button onClick={() => handleEsborraRegla(r.id)}>Esborra</button>
+                <button onClick={() => handleEsborraRegla(r.id)}>Esborra</button>{' '}
+                <button
+                  onClick={() => handleForcaRegla(r)}
+                  disabled={forçantRegla !== null}
+                  title="Aplica aquesta regla a tots els moviments coincidents, encara que ja tinguin categoria"
+                >
+                  {forçantRegla === r.id ? 'Forçant…' : 'Força'}
+                </button>
               </>
             )}
           </li>
         ))}
       </ul>
+      {missatgeForcat && <p>{missatgeForcat}</p>}
       {errorRegla && <p style={{ color: '#c00' }}>{errorRegla}</p>}
       <form onSubmit={handleAfegeixRegla}>
         <input value={nouPatro} onChange={(e) => setNouPatro(e.target.value)} placeholder="p.ex. ENDESA" />

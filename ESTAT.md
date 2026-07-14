@@ -150,6 +150,16 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 6 (opcional, ajornada)**: integració amb l'aplicació MS Access de l'usuari — Access notificaria GesFam (via HTTP, event `AfterUpdate` en VBA) en lloc que GesFam consulti Access directament. Vegeu `especificacio.md` §6 punt 6. Explícitament posposada per l'usuari; no iniciar sense que ho demani.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-14 — Categories i regles: botó per forçar una regla sobre tots els moviments coincidents, amb confirmació
+
+L'usuari va demanar un botó a cada regla de categorització automàtica per forçar-la sobre els moviments coincidents encara que ja estiguin categoritzats (inclosa una categoria assignada a mà), amb confirmació prèvia.
+
+**Backend**: nova funció `aplicaReglaForçada(reglaId)` a `backend/src/db/operations.ts`, diferent de `aplicaReglesAMovimentsSenseCategoria` (que mai toca un moviment ja categoritzat): busca TOTS els moviments el `concepte_normalitzat` dels quals conté el patró de la regla (mateixa comparació que `pickCategoriaId`, insensible a majúscules) i els assigna la categoria de la regla, sobreescrivint la que tinguessin. Es fa `backupDbFile()` abans (com altres operacions que sobreescriuen dades existents), ja que no hi ha manera de desfer-ho. Llança error si la regla no existeix. Nova ruta `POST /api/regles/:id/aplica-forcada`.
+
+**Frontend**: nou botó "Força" a cada regla de `CategoriesManager.tsx`, al costat d'"Edita"/"Esborra". Prem primer un `confirm()` explicant que sobreescriurà categories ja assignades (incloses les manuals) abans de cridar l'endpoint; mostra el nombre de moviments actualitzats.
+
+3 tests nous a `operations.test.ts` (sobreescriu una categoria manual, no toca un moviment que no coincideix amb el patró, llança error amb una regla inexistent) — 232 tests backend en total (abans 229), 36 frontend sense canvis. `tsc -b`/`oxlint`/`vite build` nets a totes dues bandes. Verificat contra una còpia temporal de `dades/finances.db` (amb WAL): creada una regla de prova sobre un concepte real ja categoritzat, `POST .../aplica-forcada` ha retornat `{"actualitzats":2}` i les dues categories s'han sobreescrit correctament; una regla inexistent retorna 400 amb missatge d'error.
+
 ### 2026-07-14 — Bug: el selector d'Horitzó (30/60/90 dies, 1 any) de Previsió comptava els dies des de l'última importació, no des d'avui de veritat
 
 L'usuari va reportar que el filtre d'Horitzó de la pestanya Previsió semblava executar-se a partir de la data de l'últim moviment del compte, no de la data actual. Investigant contra una còpia temporal de `dades/finances.db`: el compte ING-CC (última importació 08/07/2026, avui real 14/07/2026) amb horitzó=30 retornava una `serieDiaria` que anava fins al 07/08/2026 (30 dies des de la importació) en lloc del 13/08/2026 (30 dies des d'avui) — 6 dies de marge perduts només perquè el compte no s'havia tornat a importar. Amb un compte encara més desactualitzat (OB-JN, última importació 30/06/2026, 14 dies enrere), la finestra hauria quedat encara més curta.

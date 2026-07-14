@@ -480,6 +480,41 @@ export function aplicaReglesAMovimentsSenseCategoria(): number {
   return count;
 }
 
+/**
+ * A diferència de `aplicaReglesAMovimentsSenseCategoria` (que mai toca un
+ * moviment ja categoritzat), aquesta força NOMÉS la regla indicada sobre TOTS
+ * els moviments el concepte dels quals coincideixi amb el seu patró —
+ * sobreescrivint qualsevol categoria prèvia, incloses les assignades a mà.
+ * Pensada per a quan l'usuari corregeix o crea una regla i vol que s'apliqui
+ * retroactivament sense haver de reobrir cada moviment un a un. Es fa còpia
+ * de seguretat abans (com altres operacions que sobreescriuen dades ja
+ * existents), ja que no hi ha manera de desfer la sobreescriptura un cop feta.
+ */
+export function aplicaReglaForçada(reglaId: string): number {
+  const db = getDb();
+  const row = db.prepare('SELECT patro, categoria_id AS categoriaId FROM regles WHERE id = ?').get(reglaId) as
+    | { patro: string; categoriaId: string }
+    | undefined;
+  if (!row) {
+    throw new Error(`La regla "${reglaId}" no existeix.`);
+  }
+  if (row.patro.trim() === '') return 0;
+
+  const patroUpper = row.patro.toUpperCase();
+  const tots = db.prepare('SELECT id, concepte_normalitzat FROM moviments').all() as { id: string; concepte_normalitzat: string }[];
+  const coincidents = tots.filter((m) => m.concepte_normalitzat.includes(patroUpper));
+  if (coincidents.length === 0) return 0;
+
+  backupDbFile();
+  transaction(db, () => {
+    const update = db.prepare('UPDATE moviments SET categoria_id = ? WHERE id = ?');
+    for (const m of coincidents) {
+      update.run(row.categoriaId, m.id);
+    }
+  });
+  return coincidents.length;
+}
+
 // --- Transferències internes (spec 3.4) ---
 
 export function setTransferenciaInterna(movimentId: string, value: boolean): void {

@@ -150,6 +150,11 @@ export async function aplicaReglesAMovimentsSenseCategoria(): Promise<number> {
   return actualitzats;
 }
 
+export async function aplicaReglaForçada(id: string): Promise<number> {
+  const { actualitzats } = await req<{ actualitzats: number }>(`/regles/${id}/aplica-forcada`, { method: 'POST' });
+  return actualitzats;
+}
+
 // --- Transferències internes ---
 
 export function suggereixTransferencies(): Promise<SuggerimentAmbDetall[]> {

@@ -10,6 +10,7 @@ const {
   actualitzaConfiguracio,
   actualitzaRecurrent,
   actualitzaRegla,
+  aplicaReglaForçada,
   calculaPrevisio,
   commitImport,
   confirmaTransferencia,
@@ -140,6 +141,45 @@ describe('actualitzaRegla', () => {
     const regla = createRegla({ patro: 'ENDESA', categoriaId: categoria.id, prioritat: 0 });
     expect(() => actualitzaRegla(regla.id, { categoriaId: 'no-existeix' })).toThrow();
     expect(listRegles()[0].categoriaId).toBe(categoria.id);
+  });
+});
+
+describe('aplicaReglaForçada', () => {
+  it('overwrites the category of every matching movement, including ones already categorized manually', () => {
+    const subministraments = createCategoria('Subministraments');
+    const altres = createCategoria('Altres');
+    const regla = createRegla({ patro: 'ENDESA', categoriaId: subministraments.id, prioritat: 0 });
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Compte' });
+    commitImport(
+      compte,
+      [mov('2026-06-01', 'RECIBO ENDESA ENERGIA', -50), mov('2026-06-02', 'RECIBO ENDESA ENERGIA', -60)],
+      'extracte.txt',
+    );
+    const [m1, m2] = listMovimentsPerComptes([compte.id]);
+    setMovimentCategoria(m1.id, altres.id);
+    setMovimentCategoria(m2.id, altres.id);
+
+    const n = aplicaReglaForçada(regla.id);
+
+    expect(n).toBe(2);
+    const actualitzats = listMovimentsPerComptes([compte.id]);
+    expect(actualitzats.every((m) => m.categoriaId === subministraments.id)).toBe(true);
+  });
+
+  it('does not touch a movement whose concept does not match the pattern', () => {
+    const categoria = createCategoria('Subministraments');
+    const regla = createRegla({ patro: 'ENDESA', categoriaId: categoria.id, prioritat: 0 });
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Compte' });
+    commitImport(compte, [mov('2026-06-01', 'RECIBO IBERDROLA', -50)], 'extracte.txt');
+
+    const n = aplicaReglaForçada(regla.id);
+
+    expect(n).toBe(0);
+    expect(listMovimentsPerComptes([compte.id])[0].categoriaId).toBeUndefined();
+  });
+
+  it('throws for a non-existent rule id', () => {
+    expect(() => aplicaReglaForçada('no-existeix')).toThrow();
   });
 });
 
