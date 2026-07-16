@@ -150,6 +150,14 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 6 (opcional, ajornada)**: integració amb l'aplicació MS Access de l'usuari — Access notificaria GesFam (via HTTP, event `AfterUpdate` en VBA) en lloc que GesFam consulti Access directament. Vegeu `especificacio.md` §6 punt 6. Explícitament posposada per l'usuari; no iniciar sense que ho demani.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-16 — Moviments: el desplegable d'Interval incorpora "Últim any" i "Tots"
+
+El desplegable d'Interval a la pestanya Moviments (`frontend/src/views/MovimentsList.tsx`) només oferia 15/30/60/90 dies. S'hi han afegit dues opcions: "Últim any" (365 dies, mateix mecanisme que la resta de presets) i "Tots" (nova constant `INTERVAL_TOTS = 0`, que buida `dataDes` en lloc de calcular-la amb `faDiesAbans`, traient del tot el filtre inferior de data). `handleCanviaDiesPreset` distingeix aquest cas especial. `tsc -b`/`oxlint`/`vite build` nets. Pendent confirmació visual de l'usuari.
+
+### 2026-07-16 — Previsió: el gràfic d'evolució del saldo es mostra després de la taula de Moviments previstos, no abans
+
+L'usuari va demanar que el gràfic de Previsió quedi al final (després de "Moviments previstos"), mantenint el selector d'Horitzó (30/60/90 dies, 1 any) on ja era, a dalt de tot. Canvi purament de disposició a `frontend/src/views/Previsio.tsx`: el bloc `{evolucio.length > 1 && <div>...<LineChart>...</div>}` s'ha mogut de just abans de l'`<h3>Moviments previstos</h3>` a just abans del tancament de la `<section>` (després de la taula), sense tocar cap lògica de dades ni el filtre d'Horitzó. `tsc -b`/`oxlint`/`vite build` nets. Pendent confirmació visual de l'usuari (no s'ha fet servir navegador, per CLAUDE.md).
+
 ### 2026-07-14 — Categories i regles: botó per forçar una regla sobre tots els moviments coincidents, amb confirmació
 
 L'usuari va demanar un botó a cada regla de categorització automàtica per forçar-la sobre els moviments coincidents encara que ja estiguin categoritzats (inclosa una categoria assignada a mà), amb confirmació prèvia.

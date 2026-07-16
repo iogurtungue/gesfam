@@ -24,8 +24,11 @@ type FiltreTipus = 'tots' | 'ingres' | 'carrec';
 type FiltreTI = 'tots' | 'nomes' | 'exclou';
 type CampOrdre = 'dataOperacio' | 'concepteOriginal';
 
-/** Interval per defecte del llistat: últims 60 dies (desplegable amb 15/30/60/90). */
+/** Interval per defecte del llistat: últims 60 dies (desplegable amb 15/30/60/90/365/tots). */
 const DIES_PER_DEFECTE = 60;
+
+/** Valor especial del desplegable d'Interval que treu el filtre de data (mostra tots els moviments). */
+const INTERVAL_TOTS = 0;
 
 interface FormRegla {
   patro: string;
@@ -147,7 +150,7 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
 
   function handleCanviaDiesPreset(dies: number) {
     setDiesPreset(dies);
-    setDataDes(faDiesAbans(avui(), dies));
+    setDataDes(dies === INTERVAL_TOTS ? '' : faDiesAbans(avui(), dies));
     setDataFins('');
   }
 
@@ -505,6 +508,8 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
             <option value={30}>Últims 30 dies</option>
             <option value={60}>Últims 60 dies</option>
             <option value={90}>Últims 90 dies</option>
+            <option value={365}>Últim any</option>
+            <option value={INTERVAL_TOTS}>Tots</option>
           </select>
         </label>
         <label>
