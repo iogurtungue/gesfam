@@ -232,6 +232,16 @@ export function eliminaOcurrenciaPrevista(recurrentId: string, data: string): Pr
   return req(`/recurrents/${recurrentId}/elimina-ocurrencia`, { method: 'POST', ...json({ data }) });
 }
 
+/**
+ * Edita només una ocurrència prevista d'un recurrent periòdic (especificacio.md 4.3), sense afectar la resta de la
+ * sèrie: converteix aquesta ocurrència en un nou recurrent `unica` amb les dades editades, i avança `dataPrevista`
+ * del recurrent original a la propera repetició. No aplicable a un recurrent ja `unica` — en aquest cas cal fer
+ * servir `actualitzaRecurrent`.
+ */
+export function editaOcurrenciaPrevista(recurrentId: string, data: string, dades: DadesRecurrent): Promise<Recurrent> {
+  return req(`/recurrents/${recurrentId}/edita-ocurrencia`, { method: 'POST', ...json({ data, dades }) });
+}
+
 export async function previsualitzaImportacioRecurrents(file: File): Promise<PrevisualitzacioRecurrentsResult> {
   const form = new FormData();
   form.append('fitxer', file);

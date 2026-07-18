@@ -23,6 +23,7 @@ const {
   descartaTransferencia,
   deleteReglaLiquidacio,
   desmarcaLiquidacioTargeta,
+  editaOcurrenciaPrevista,
   eliminaCompte,
   eliminaMoviment,
   eliminaOcurrenciaPrevista,
@@ -719,6 +720,75 @@ describe('recurrents (sub-fase 3.1, especificacio.md 4.1/4.2)', () => {
 
   it('eliminaOcurrenciaPrevista throws for an id that does not exist', () => {
     expect(() => eliminaOcurrenciaPrevista('no-existeix', '2026-08-01')).toThrow();
+  });
+
+  it('editaOcurrenciaPrevista splits a periodic occurrence into a new unica recurrent, without touching future ones', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const categoria = createCategoria('Subscripcions');
+    const recurrent = creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Netflix',
+      periodicitat: 'mensual',
+      importCents: -1200,
+      dataPrevista: '2026-05-15',
+    });
+
+    const nou = editaOcurrenciaPrevista(recurrent.id, '2026-07-15', {
+      compteId: compte.id,
+      concepte: 'Netflix (pujada de preu)',
+      periodicitat: 'mensual',
+      importCents: -1500,
+      dataPrevista: '2026-07-15',
+      categoriaId: categoria.id,
+    });
+
+    const tots = listRecurrents();
+    expect(tots).toHaveLength(2);
+
+    const original = tots.find((r) => r.id === recurrent.id)!;
+    expect(original.periodicitat).toBe('mensual');
+    expect(original.dataPrevista).toBe('2026-08-15');
+    expect(original.importCents).toBe(-1200);
+
+    expect(nou.periodicitat).toBe('unica');
+    expect(nou.concepte).toBe('Netflix (pujada de preu)');
+    expect(nou.importCents).toBe(-1500);
+    expect(nou.dataPrevista).toBe('2026-07-15');
+    expect(nou.categoriaId).toBe(categoria.id);
+  });
+
+  it('editaOcurrenciaPrevista throws for a punctual (unica) recurrent', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    const recurrent = creaRecurrentManual({
+      compteId: compte.id,
+      concepte: 'Factura',
+      periodicitat: 'unica',
+      importCents: -5000,
+      dataPrevista: '2026-08-01',
+    });
+
+    expect(() =>
+      editaOcurrenciaPrevista(recurrent.id, '2026-08-01', {
+        compteId: compte.id,
+        concepte: 'Factura',
+        periodicitat: 'unica',
+        importCents: -5500,
+        dataPrevista: '2026-08-01',
+      }),
+    ).toThrow();
+  });
+
+  it('editaOcurrenciaPrevista throws for an id that does not exist', () => {
+    const compte = createCompte({ banc: 'sabadell', tipus: 'corrent', alias: 'Corrent' });
+    expect(() =>
+      editaOcurrenciaPrevista('no-existeix', '2026-08-01', {
+        compteId: compte.id,
+        concepte: 'Test',
+        periodicitat: 'mensual',
+        importCents: -100,
+        dataPrevista: '2026-08-01',
+      }),
+    ).toThrow();
   });
 
   it('is included in the JSON backup export/import round-trip', () => {

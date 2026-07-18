@@ -1017,6 +1017,32 @@ export function eliminaOcurrenciaPrevista(recurrentId: string, dataOcurrencia: s
   getDb().prepare('UPDATE recurrents SET data_prevista = ? WHERE id = ?').run(novaDataPrevista, recurrentId);
 }
 
+/**
+ * Edita només UNA ocurrència projectada d'un recurrent periòdic (spec 4.3),
+ * sense afectar la resta de la sèrie: mateix mecanisme que
+ * `eliminaOcurrenciaPrevista` (avança `dataPrevista` del recurrent original a
+ * la propera repetició després de `dataOcurrencia`), però en lloc de perdre
+ * l'ocurrència la converteix en un nou recurrent `unica` amb les dades
+ * editades. No té sentit per a un recurrent ja `unica` (la seva única
+ * ocurrència ÉS la sèrie sencera) — per aquest cas cal editar-lo directament
+ * amb `actualitzaRecurrent`.
+ */
+export function editaOcurrenciaPrevista(recurrentId: string, dataOcurrencia: string, dades: DadesRecurrent): Recurrent {
+  const row = getDb().prepare('SELECT * FROM recurrents WHERE id = ?').get(recurrentId) as RecurrentRow | undefined;
+  if (!row) {
+    throw new Error('El recurrent indicat no existeix.');
+  }
+  const { periodicitat } = rowToRecurrent(row);
+  if (periodicitat === 'unica') {
+    throw new Error('Aquest recurrent és puntual: edita la sèrie sencera amb actualitzaRecurrent.');
+  }
+
+  backupDbFile();
+  const novaDataPrevista = avancaPeriodicitat(dataOcurrencia, periodicitat);
+  getDb().prepare('UPDATE recurrents SET data_prevista = ? WHERE id = ?').run(novaDataPrevista, recurrentId);
+  return inserirRecurrent({ ...dades, periodicitat: 'unica' }, 'manual', 'confirmat');
+}
+
 export interface ImportaRecurrentsResult {
   nous: number;
   eliminats: number;

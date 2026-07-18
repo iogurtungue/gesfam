@@ -245,6 +245,15 @@ router.post('/recurrents/:id/elimina-ocurrencia', (req, res) => {
   }
 });
 
+router.post('/recurrents/:id/edita-ocurrencia', (req, res) => {
+  const { data, dades } = req.body as { data: string; dades: ops.DadesRecurrent };
+  try {
+    res.json(ops.editaOcurrenciaPrevista(req.params.id, data, dades));
+  } catch (err) {
+    res.status(400).json({ error: (err as Error).message });
+  }
+});
+
 // --- Previsió (spec 4.3, sub-fase 4.1) ---
 
 router.get('/previsio', (req, res) => {

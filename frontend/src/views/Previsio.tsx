@@ -1,11 +1,11 @@
 import { Fragment, useCallback, useEffect, useMemo, useState } from 'react';
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from 'recharts';
-import { actualitzaRecurrent, calculaPrevisio, eliminaOcurrenciaPrevista, listRecurrents } from '../api/client';
+import { actualitzaRecurrent, calculaPrevisio, editaOcurrenciaPrevista, eliminaOcurrenciaPrevista, listRecurrents } from '../api/client';
 import type { Categoria, Compte, PeriodicitatRecurrent, Previsio as PrevisioResultat, Recurrent } from '../api/types';
 import { formatDateEs } from '../lib/dates';
 import { centsToEs } from '../lib/numbers';
 import { PERIODICITAT_LABEL, TOTES_LES_PERIODICITATS } from '../lib/periodicitat';
-import { esborranyAPayload, esborranyDe, type EsborranyEdicio } from '../lib/recurrentEdit';
+import { esborranyADadesRecurrent, esborranyAPayload, esborranyDe, type EsborranyEdicio } from '../lib/recurrentEdit';
 import { cellTI, inputCompletCella } from '../lib/recurrentsTable';
 
 type FiltreTipus = 'tots' | 'ingres' | 'carrec';
@@ -66,13 +66,26 @@ export function Previsio({ seleccionats, categories }: Props) {
     setEsborrany(null);
   }
 
-  async function handleDesa(recurrentId: string) {
+  /**
+   * `abast` distingeix si l'edició s'aplica a tota la sèrie (`actualitzaRecurrent`,
+   * comportament de sempre) o només a l'ocurrència que s'estava editant
+   * (`editaOcurrenciaPrevista`: la separa en un nou recurrent `unica` i avança
+   * la sèrie original a la propera repetició). Només té sentit oferir
+   * `'ocurrencia'` per a un recurrent periòdic — per a un `unica` és el mateix.
+   */
+  async function handleDesa(recurrentId: string, dataOcurrencia: string, abast: 'serie' | 'ocurrencia') {
     if (!esborrany) return;
-    const payload = esborranyAPayload(esborrany);
-    if (!payload) return;
     setDesant(true);
     try {
-      await actualitzaRecurrent(recurrentId, payload);
+      if (abast === 'ocurrencia') {
+        const dades = esborranyADadesRecurrent(esborrany);
+        if (!dades) return;
+        await editaOcurrenciaPrevista(recurrentId, dataOcurrencia, dades);
+      } else {
+        const payload = esborranyAPayload(esborrany);
+        if (!payload) return;
+        await actualitzaRecurrent(recurrentId, payload);
+      }
       tancaEdicio();
       refresh();
     } finally {
@@ -385,9 +398,28 @@ export function Previsio({ seleccionats, categories }: Props) {
                               style={{ width: 100 }}
                             />
                           </label>
-                          <button onClick={() => handleDesa(e.recurrentId)} disabled={desant}>
-                            Desa
-                          </button>
+                          {recurrentPerId.get(e.recurrentId)?.periodicitat !== 'unica' ? (
+                            <>
+                              <button
+                                onClick={() => handleDesa(e.recurrentId, e.dataPrevistaOriginal ?? e.data, 'ocurrencia')}
+                                disabled={desant}
+                                title="Els canvis només afecten aquesta ocurrència; la resta de la sèrie continua igual"
+                              >
+                                Desa només aquesta ocurrència
+                              </button>
+                              <button
+                                onClick={() => handleDesa(e.recurrentId, e.dataPrevistaOriginal ?? e.data, 'serie')}
+                                disabled={desant}
+                                title="Els canvis afecten totes les ocurrències futures d'aquest recurrent"
+                              >
+                                Desa tota la sèrie
+                              </button>
+                            </>
+                          ) : (
+                            <button onClick={() => handleDesa(e.recurrentId, e.dataPrevistaOriginal ?? e.data, 'serie')} disabled={desant}>
+                              Desa
+                            </button>
+                          )}
                           <button onClick={tancaEdicio} disabled={desant}>
                             Cancel·la
                           </button>

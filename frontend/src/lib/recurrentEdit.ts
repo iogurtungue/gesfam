@@ -1,4 +1,4 @@
-import type { PeriodicitatRecurrent, Recurrent } from '../api/types';
+import type { DadesRecurrent, PeriodicitatRecurrent, Recurrent } from '../api/types';
 
 // Compartit entre RecurrentsList.tsx (pestanya Recurrents) i Previsio.tsx
 // (edició d'un recurrent des de la seva ocurrència projectada) perquè
@@ -44,5 +44,22 @@ export function esborranyAPayload(esborrany: EsborranyEdicio) {
     dataFi: esborrany.dataFi || null,
     categoriaId: esborrany.categoriaId || null,
     referencia: esborrany.referencia || null,
+  };
+}
+
+/** Converteix l'esborrany a `DadesRecurrent`, per crear un nou recurrent `unica` (edició d'una sola ocurrència). `null` si l'import no és un número vàlid. */
+export function esborranyADadesRecurrent(esborrany: EsborranyEdicio): DadesRecurrent | null {
+  const importCents = Math.round(parseFloat(esborrany.importEuros.replace(',', '.')) * 100);
+  if (Number.isNaN(importCents)) return null;
+  return {
+    compteId: esborrany.compteId,
+    concepte: esborrany.concepte,
+    periodicitat: esborrany.periodicitat,
+    importCents,
+    importAproximat: esborrany.importAproximat,
+    dataPrevista: esborrany.dataPrevista,
+    dataFi: esborrany.dataFi || undefined,
+    categoriaId: esborrany.categoriaId || undefined,
+    referencia: esborrany.referencia || undefined,
   };
 }
