@@ -3,7 +3,7 @@ import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YA
 import { actualitzaRecurrent, calculaPrevisio, editaOcurrenciaPrevista, eliminaOcurrenciaPrevista, listRecurrents } from '../api/client';
 import type { Categoria, Compte, PeriodicitatRecurrent, Previsio as PrevisioResultat, Recurrent } from '../api/types';
 import { formatDateEs } from '../lib/dates';
-import { centsToEs } from '../lib/numbers';
+import { centsToEs, eurosToCents } from '../lib/numbers';
 import { PERIODICITAT_LABEL, TOTES_LES_PERIODICITATS } from '../lib/periodicitat';
 import { esborranyADadesRecurrent, esborranyAPayload, esborranyDe, type EsborranyEdicio } from '../lib/recurrentEdit';
 import { cellTI, inputCompletCella } from '../lib/recurrentsTable';
@@ -30,6 +30,8 @@ export function Previsio({ seleccionats, categories }: Props) {
   const [recurrents, setRecurrents] = useState<Recurrent[]>([]);
   const [categoriaFiltre, setCategoriaFiltre] = useState('');
   const [tipus, setTipus] = useState<FiltreTipus>('tots');
+  const [importDes, setImportDes] = useState('');
+  const [importFins, setImportFins] = useState('');
   const [filtreTI, setFiltreTI] = useState<FiltreTI>('tots');
   const [text, setText] = useState('');
   const [editant, setEditant] = useState<string | null>(null);
@@ -139,16 +141,20 @@ export function Previsio({ seleccionats, categories }: Props) {
   // acumulat, independentment de quins moviments queden visibles.
   const filtrats = useMemo(() => {
     const textNormalitzat = text.trim().toUpperCase();
+    const centsDes = eurosToCents(importDes);
+    const centsFins = eurosToCents(importFins);
     return files.filter(({ esdeveniment: e }) => {
       if (categoriaFiltre && e.categoriaId !== categoriaFiltre) return false;
       if (tipus === 'ingres' && e.importCents < 0) return false;
       if (tipus === 'carrec' && e.importCents >= 0) return false;
+      if (centsDes !== null && e.importCents < centsDes) return false;
+      if (centsFins !== null && e.importCents > centsFins) return false;
       if (filtreTI === 'nomes' && !e.esTransferenciaInterna) return false;
       if (filtreTI === 'exclou' && e.esTransferenciaInterna) return false;
       if (textNormalitzat && !e.concepte.toUpperCase().includes(textNormalitzat)) return false;
       return true;
     });
-  }, [files, categoriaFiltre, tipus, filtreTI, text]);
+  }, [files, categoriaFiltre, tipus, importDes, importFins, filtreTI, text]);
 
   if (seleccionats.length === 0) {
     return (
@@ -208,6 +214,26 @@ export function Previsio({ seleccionats, categories }: Props) {
             <option value="ingres">Ingressos</option>
             <option value="carrec">Càrrecs</option>
           </select>
+        </label>
+        <label title="Deixa els dos camps iguals per filtrar per un import exacte">
+          Import des de:{' '}
+          <input
+            type="number"
+            step="0.01"
+            value={importDes}
+            onChange={(e) => setImportDes(e.target.value)}
+            style={{ width: 80 }}
+          />
+        </label>
+        <label title="Deixa els dos camps iguals per filtrar per un import exacte">
+          Fins a:{' '}
+          <input
+            type="number"
+            step="0.01"
+            value={importFins}
+            onChange={(e) => setImportFins(e.target.value)}
+            style={{ width: 80 }}
+          />
         </label>
         <label>
           TI:{' '}

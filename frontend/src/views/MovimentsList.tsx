@@ -1,7 +1,7 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
 import { creaConsultaSaldo, creaRangCronologicPerMoviment, creaSaldoAcumulatPerMoviment } from '../lib/balance';
 import { avui, faDiesAbans, formatDateEs } from '../lib/dates';
-import { centsToEs } from '../lib/numbers';
+import { centsToEs, eurosToCents } from '../lib/numbers';
 import {
   aplicaReglesAMovimentsSenseCategoria,
   confirmaTransferencia,
@@ -68,6 +68,8 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
   const [categoriaFiltre, setCategoriaFiltre] = useState('');
   const [text, setText] = useState('');
   const [tipus, setTipus] = useState<FiltreTipus>('tots');
+  const [importDes, setImportDes] = useState('');
+  const [importFins, setImportFins] = useState('');
   const [filtreTI, setFiltreTI] = useState<FiltreTI>('tots');
   const [ordre, setOrdre] = useState<{ camp: CampOrdre; direccio: 'asc' | 'desc' }>({ camp: 'dataOperacio', direccio: 'desc' });
   const [suggeriments, setSuggeriments] = useState<SuggerimentAmbDetall[]>([]);
@@ -156,12 +158,16 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
 
   const filtrats = useMemo(() => {
     const textNormalitzat = text.trim().toUpperCase();
+    const centsDes = eurosToCents(importDes);
+    const centsFins = eurosToCents(importFins);
     const resultat = moviments.filter((m) => {
       if (dataDes && m.dataOperacio < dataDes) return false;
       if (dataFins && m.dataOperacio > dataFins) return false;
       if (categoriaFiltre && m.categoriaId !== categoriaFiltre) return false;
       if (tipus === 'ingres' && m.importCents < 0) return false;
       if (tipus === 'carrec' && m.importCents >= 0) return false;
+      if (centsDes !== null && m.importCents < centsDes) return false;
+      if (centsFins !== null && m.importCents > centsFins) return false;
       if (filtreTI === 'nomes' && !m.esTransferenciaInterna) return false;
       if (filtreTI === 'exclou' && m.esTransferenciaInterna) return false;
       if (textNormalitzat && !m.concepteNormalitzat.includes(textNormalitzat)) return false;
@@ -213,7 +219,7 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
       if (ordre.camp === 'concepteOriginal') return a.concepteOriginal.localeCompare(b.concepteOriginal) * dir || comparaParella(a, b);
       return a.dataOperacio.localeCompare(b.dataOperacio) * dir || comparaParella(a, b);
     });
-  }, [moviments, dataDes, dataFins, categoriaFiltre, text, tipus, filtreTI, ordre, rangCronologicTargetaPerMoviment]);
+  }, [moviments, dataDes, dataFins, categoriaFiltre, text, tipus, importDes, importFins, filtreTI, ordre, rangCronologicTargetaPerMoviment]);
 
   function canviaOrdre(camp: CampOrdre) {
     setOrdre((prev) => (prev.camp === camp ? { camp, direccio: prev.direccio === 'asc' ? 'desc' : 'asc' } : { camp, direccio: 'asc' }));
@@ -536,6 +542,26 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
             <option value="ingres">Ingressos</option>
             <option value="carrec">Càrrecs</option>
           </select>
+        </label>
+        <label title="Deixa els dos camps iguals per filtrar per un import exacte">
+          Import des de:{' '}
+          <input
+            type="number"
+            step="0.01"
+            value={importDes}
+            onChange={(e) => setImportDes(e.target.value)}
+            style={{ width: 80 }}
+          />
+        </label>
+        <label title="Deixa els dos camps iguals per filtrar per un import exacte">
+          Fins a:{' '}
+          <input
+            type="number"
+            step="0.01"
+            value={importFins}
+            onChange={(e) => setImportFins(e.target.value)}
+            style={{ width: 80 }}
+          />
         </label>
         <label>
           TI:{' '}

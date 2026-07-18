@@ -17,3 +17,10 @@ export function centsToEs(cents: number, ambSimbol = true): string {
   const euroText = agrupaMilers(euros);
   return `${negative ? '-' : ''}${euroText},${centPart}${ambSimbol ? ' €' : ''}`;
 }
+
+/** Parseja un import en euros escrit per l'usuari (accepta ',' o '.' com a separador decimal) a cèntims, o `null` si és buit o no és un número vàlid. */
+export function eurosToCents(text: string): number | null {
+  if (text.trim() === '') return null;
+  const value = parseFloat(text.replace(',', '.'));
+  return Number.isNaN(value) ? null : Math.round(value * 100);
+}

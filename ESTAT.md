@@ -150,6 +150,12 @@ Verificació addicional (no automatitzada, feta manualment durant la migració d
 - **Fase 6 (opcional, ajornada)**: integració amb l'aplicació MS Access de l'usuari — Access notificaria GesFam (via HTTP, event `AfterUpdate` en VBA) en lloc que GesFam consulti Access directament. Vegeu `especificacio.md` §6 punt 6. Explícitament posposada per l'usuari; no iniciar sense que ho demani.
 - El bundle de producció del frontend supera els 500 kB (principalment `recharts`); Vite ho avisa en el build però no s'ha considerat necessari fer code-splitting per a una app d'ús personal.
 
+### 2026-07-18 — Moviments i Previsió: filtre per import exacte o rang d'imports
+
+L'usuari va demanar poder filtrar per import (exacte o en rang) tant a la taula de Moviments com a la de Moviments previstos (Previsió). Nova funció `eurosToCents(text)` a `frontend/src/lib/numbers.ts` (accepta ',' o '.' com a decimal, retorna `null` si és buit o invàlid). A totes dues vistes s'han afegit dos camps "Import des de" / "Fins a" (euros, admeten negatius per a càrrecs): si tots dos coincideixen és un filtre d'import exacte; deixant-ne només un es converteix en un mínim o un màxim obert — mateix patró que el rang de dates "Des de"/"Fins a" ja existent a Moviments.
+
+5 tests nous a `numbers.test.ts` (decimal amb punt/coma, negatiu, buit, invàlid) — 41 tests frontend en total (abans 36), 235 backend sense canvis (no toca backend). `tsc -b`/`oxlint`/`vite build` nets. Pendent confirmació visual de l'usuari.
+
 ### 2026-07-18 — Previsió: editar un moviment previst permet triar entre només aquesta ocurrència o tota la sèrie
 
 L'usuari va demanar que, en editar un moviment previst d'un recurrent periòdic des de la pestanya Previsió, es pugui triar si els canvis afecten només aquella ocurrència concreta o tota la sèrie (abans, `actualitzaRecurrent` sempre canviava la sèrie sencera).
