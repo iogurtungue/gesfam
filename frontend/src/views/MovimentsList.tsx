@@ -1,5 +1,5 @@
 import { Fragment, useEffect, useMemo, useState } from 'react';
-import { creaConsultaSaldo, creaRangCronologicPerMoviment, creaSaldoAcumulatPerMoviment } from '../lib/balance';
+import { creaConsultaSaldo, creaRangCronologicCorrentPerMoviment, creaRangCronologicPerMoviment, creaSaldoAcumulatPerMoviment } from '../lib/balance';
 import { avui, faDiesAbans, formatDateEs } from '../lib/dates';
 import { centsToEs, eurosToCents } from '../lib/numbers';
 import {
@@ -124,17 +124,20 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
     return map;
   }, [moviments, seleccionats]);
 
-  // Posició de cada moviment de targeta en l'ordre cronològic real
-  // reconstruït (mateix càlcul que saldoAcumulatTargetaPerMoviment): la
-  // taula ha d'ordenar les files d'un mateix dia amb aquest mateix criteri,
-  // no amb `seq` cru, o els saldos tornarien a semblar desordenats encara
-  // que cada valor individual fos correcte.
-  const rangCronologicTargetaPerMoviment = useMemo(() => {
+  // Posició de cada moviment en l'ordre cronològic real reconstruït (mateix
+  // càlcul que saldoAcumulatTargetaPerMoviment per a targetes): la taula ha
+  // d'ordenar les files d'un mateix dia amb aquest mateix criteri, no amb
+  // `seq` cru, o els saldos tornarien a semblar desordenats encara que cada
+  // valor individual fos correcte. Per a comptes corrent s'usa la cadena de
+  // saldo (creaRangCronologicCorrentPerMoviment), no la inferència per lot
+  // de les targetes -- els comptes corrent ja porten saldoPosteriorCents,
+  // que és un senyal directe i més fiable que l'ordre de fitxer.
+  const rangCronologicPerMoviment = useMemo(() => {
     const map = new Map<string, number>();
     for (const c of seleccionats) {
-      if (c.tipus !== 'targeta') continue;
       const movimentsCompte = moviments.filter((m) => m.compteId === c.id);
-      for (const [id, rang] of creaRangCronologicPerMoviment(movimentsCompte)) {
+      const rangs = c.tipus === 'targeta' ? creaRangCronologicPerMoviment(movimentsCompte) : creaRangCronologicCorrentPerMoviment(movimentsCompte);
+      for (const [id, rang] of rangs) {
         map.set(id, rang);
       }
     }
@@ -174,11 +177,11 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
       return true;
     });
     const dir = ordre.direccio === 'asc' ? 1 : -1;
-    // Same-key ties (typically same-day movements): per a un moviment de
-    // targeta, el rang de rangCronologicTargetaPerMoviment (mateix ordre que
-    // ha comptat creaSaldoAcumulatPerMoviment, no `seq` cru -- altrament la
-    // fila es mouria per pantalla en un ordre diferent del que reflecteix el
-    // seu propi saldo).
+    // Same-key ties (typically same-day movements): el rang de
+    // rangCronologicPerMoviment (mateix ordre que ha comptat
+    // creaSaldoAcumulatPerMoviment/ordenaCronologicament, no `seq` cru --
+    // altrament la fila es mouria per pantalla en un ordre diferent del que
+    // reflecteix el seu propi saldo).
     //
     // Aquest desempat SÍ es flipa amb `dir` (a diferència d'una primera
     // versió que no ho feia): quan la taula està ordenada per data
@@ -206,7 +209,7 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
         const origen = movimentPerId.get(m.movimentOrigenId);
         if (origen) return clauOrdre(origen);
       }
-      return rangCronologicTargetaPerMoviment.get(m.id) ?? m.seq;
+      return rangCronologicPerMoviment.get(m.id) ?? m.seq;
     }
     function comparaParella(a: Moviment, b: Moviment): number {
       const diferencia = clauOrdre(a) - clauOrdre(b);
@@ -219,7 +222,7 @@ export function MovimentsList({ seleccionats, totsElsComptes, categories, regles
       if (ordre.camp === 'concepteOriginal') return a.concepteOriginal.localeCompare(b.concepteOriginal) * dir || comparaParella(a, b);
       return a.dataOperacio.localeCompare(b.dataOperacio) * dir || comparaParella(a, b);
     });
-  }, [moviments, dataDes, dataFins, categoriaFiltre, text, tipus, importDes, importFins, filtreTI, ordre, rangCronologicTargetaPerMoviment]);
+  }, [moviments, dataDes, dataFins, categoriaFiltre, text, tipus, importDes, importFins, filtreTI, ordre, rangCronologicPerMoviment]);
 
   function canviaOrdre(camp: CampOrdre) {
     setOrdre((prev) => (prev.camp === camp ? { camp, direccio: prev.direccio === 'asc' ? 'desc' : 'asc' } : { camp, direccio: 'asc' }));

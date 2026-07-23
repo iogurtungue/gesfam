@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { creaConsultaSaldo, creaRangCronologicPerMoviment, creaSaldoAcumulatPerMoviment, saldoEnData } from './balance';
+import { creaConsultaSaldo, creaRangCronologicCorrentPerMoviment, creaRangCronologicPerMoviment, creaSaldoAcumulatPerMoviment, saldoEnData } from './balance';
 
 describe('saldoEnData', () => {
   it('returns the running balance of the latest movement on or before the date (compte corrent)', () => {
@@ -240,6 +240,42 @@ describe('creaRangCronologicPerMoviment', () => {
     for (const m of perRang) {
       acumulat += m.importCents;
       expect(saldos.get(m.id)).toBe(acumulat);
+    }
+  });
+});
+
+describe('creaRangCronologicCorrentPerMoviment', () => {
+  it('orders same-day compte corrent movements by the balance chain, not raw seq (actual reported bug: ING 23/07/2026)', () => {
+    // Real data: file lists the newer movement first (seq 1208), so ascending
+    // seq is the WRONG tie-break direction here -- the balance chain (each
+    // movement's saldoPosteriorCents - importCents must equal the previous
+    // movement's saldoPosteriorCents) is the only reliable signal. The
+    // previous day's closing balance (996.64) anchors which of the two same-
+    // day movements chains first.
+    const diaAnterior = { id: 'anterior', dataOperacio: '2026-07-22', importCents: 0, saldoPosteriorCents: 99664, seq: 1200, lotImportacioId: 'L1' };
+    const bizum = { id: 'bizum', dataOperacio: '2026-07-23', importCents: -8000, saldoPosteriorCents: 75590, seq: 1208, lotImportacioId: 'L1' };
+    const pago = { id: 'pago', dataOperacio: '2026-07-23', importCents: -16074, saldoPosteriorCents: 83590, seq: 1209, lotImportacioId: 'L1' };
+
+    const rangs = creaRangCronologicCorrentPerMoviment([diaAnterior, bizum, pago]);
+    // pago chains directly off the previous day's closing balance (996.64 -
+    // 160.74 = 835.90), so it happened first; bizum's balance (755.90) then
+    // chains off pago's (835.90 - 80.00 = 755.90), so it's chronologically later.
+    expect(rangs.get('pago')).toBe(1);
+    expect(rangs.get('bizum')).toBe(2);
+  });
+
+  it('matches the order used by creaConsultaSaldo, so the table can sort rows consistently with the saldo it shows', () => {
+    const a = { id: 'a', dataOperacio: '2026-06-01', importCents: -1000, saldoPosteriorCents: 9000, seq: 5, lotImportacioId: 'L1' };
+    const b = { id: 'b', dataOperacio: '2026-06-05', importCents: 500, saldoPosteriorCents: 9500, seq: 3, lotImportacioId: 'L1' };
+    const c = { id: 'c', dataOperacio: '2026-06-10', importCents: -200, saldoPosteriorCents: 9300, seq: 4, lotImportacioId: 'L1' };
+    const moviments = [a, b, c];
+
+    const rangs = creaRangCronologicCorrentPerMoviment(moviments);
+    const consulta = creaConsultaSaldo(moviments, 'corrent');
+
+    const perRang = [...moviments].sort((x, y) => rangs.get(x.id)! - rangs.get(y.id)!);
+    for (const m of perRang) {
+      expect(consulta(m.dataOperacio)).toBe(m.saldoPosteriorCents);
     }
   });
 });

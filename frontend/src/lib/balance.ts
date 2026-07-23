@@ -26,15 +26,15 @@ export interface MovimentPerSaldo {
  * predecessor to match against) — those cases fall back to `seq`, but only
  * for the unresolvable subset, not the whole history.
  */
-function ordenaCronologicament(moviments: MovimentPerSaldo[]): MovimentPerSaldo[] {
-  const perData = new Map<string, MovimentPerSaldo[]>();
+function ordenaCronologicament<T extends MovimentPerSaldo>(moviments: T[]): T[] {
+  const perData = new Map<string, T[]>();
   for (const m of moviments) {
     const grup = perData.get(m.dataOperacio);
     if (grup) grup.push(m);
     else perData.set(m.dataOperacio, [m]);
   }
 
-  const resultat: MovimentPerSaldo[] = [];
+  const resultat: T[] = [];
   let saldoConegut: number | null = null;
 
   for (const data of [...perData.keys()].sort()) {
@@ -252,5 +252,21 @@ export function creaSaldoAcumulatPerMoviment(moviments: MovimentAcumulat[]): Map
 export function creaRangCronologicPerMoviment(moviments: MovimentAcumulat[]): Map<string, number> {
   const resultat = new Map<string, number>();
   ordenaMovimentsTargeta(moviments).forEach((m, index) => resultat.set(m.id, index));
+  return resultat;
+}
+
+/**
+ * Equivalent de creaRangCronologicPerMoviment per a comptes corrent: la taula
+ * de Moviments ha d'ordenar visualment les files d'un mateix dia igual que
+ * ordenaCronologicament (la reconstrucció per cadena de saldo que ja fa
+ * servir saldoEnData/creaConsultaSaldo), no per `seq` cru -- alguns extractes
+ * (comprovat amb dades reals d'ING) llisten les files del més recent al més
+ * antic, així que `seq` ascendent és sovint l'ordre cronològic invers dins
+ * d'un mateix dia (bug real: els dos moviments del 23/07 apareixien en
+ * l'ordre contrari al que reflectia el seu propi saldo).
+ */
+export function creaRangCronologicCorrentPerMoviment(moviments: MovimentAcumulat[]): Map<string, number> {
+  const resultat = new Map<string, number>();
+  ordenaCronologicament(moviments).forEach((m, index) => resultat.set(m.id, index));
   return resultat;
 }
